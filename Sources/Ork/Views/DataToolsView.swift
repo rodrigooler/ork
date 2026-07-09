@@ -1,7 +1,9 @@
 import SwiftUI
 
-struct DataToolsView: View {
+/// Data endpoints scoped to one workspace: lives inside the project, like a plugin pane.
+struct DataPane: View {
     @EnvironmentObject private var store: AppStore
+    let workspace: Workspace
 
     enum ProbeStatus { case checking, reachable, unreachable }
 
@@ -11,31 +13,25 @@ struct DataToolsView: View {
     @State private var port = "5432"
     @State private var status: [UUID: ProbeStatus] = [:]
 
+    private var connections: [DBConnection] {
+        store.connections(for: workspace.id)
+    }
+
     var body: some View {
-        VStack(alignment: .leading, spacing: 16) {
-            VStack(alignment: .leading, spacing: 3) {
-                Text("Data Grid")
-                    .font(.system(size: 17, weight: .bold, design: .monospaced))
-                    .foregroundStyle(OrkTheme.text)
-                Text("Live endpoints for your data infrastructure. Query consoles land next.")
-                    .font(.system(size: 11, design: .monospaced))
-                    .foregroundStyle(OrkTheme.dim)
-            }
-
+        VStack(alignment: .leading, spacing: 14) {
             addForm
-
-            if store.connections.isEmpty {
+            if connections.isEmpty {
                 emptyHint
             } else {
                 ScrollView {
                     LazyVStack(spacing: 10) {
-                        ForEach(store.connections) { connectionCard($0) }
+                        ForEach(connections) { connectionCard($0) }
                     }
                 }
             }
             Spacer(minLength: 0)
         }
-        .padding(18)
+        .padding(16)
         .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
     }
 
@@ -52,16 +48,16 @@ struct DataToolsView: View {
             Button {
                 addConnection()
             } label: {
-                Label("add", systemImage: "plus")
-                    .font(.system(size: 11, weight: .semibold, design: .monospaced))
+                Label("Add", systemImage: "plus")
+                    .font(.system(size: 11, weight: .medium))
             }
             .buttonStyle(.borderedProminent)
-            .tint(OrkTheme.cyan.opacity(0.8))
+            .tint(OrkTheme.clay)
         }
         .padding(10)
-        .background(Color.white.opacity(0.03))
-        .clipShape(RoundedRectangle(cornerRadius: 12))
-        .overlay(RoundedRectangle(cornerRadius: 12).strokeBorder(OrkTheme.stroke, lineWidth: 1))
+        .background(OrkTheme.raised)
+        .clipShape(RoundedRectangle(cornerRadius: 10))
+        .overlay(RoundedRectangle(cornerRadius: 10).strokeBorder(OrkTheme.hairline, lineWidth: 1))
         .onChange(of: kind) { _, newKind in
             port = String(newKind.defaultPort)
         }
@@ -71,6 +67,7 @@ struct DataToolsView: View {
         guard let portNumber = Int(port), !host.isEmpty else { return }
         let connection = DBConnection(
             id: UUID(),
+            workspaceID: workspace.id,
             name: name.isEmpty ? "\(kind.rawValue)-local" : name,
             kind: kind,
             host: host,
@@ -87,36 +84,36 @@ struct DataToolsView: View {
                 .foregroundStyle(connection.kind.tint)
                 .frame(width: 34, height: 34)
                 .background(connection.kind.tint.opacity(0.12))
-                .clipShape(RoundedRectangle(cornerRadius: 9))
+                .clipShape(RoundedRectangle(cornerRadius: 8))
             VStack(alignment: .leading, spacing: 2) {
                 Text(connection.name)
-                    .font(.system(size: 12, weight: .semibold, design: .monospaced))
-                    .foregroundStyle(OrkTheme.text)
+                    .font(.system(size: 12, weight: .semibold))
+                    .foregroundStyle(OrkTheme.cream)
                 Text("\(connection.host):\(String(connection.port))")
                     .font(.system(size: 10, design: .monospaced))
-                    .foregroundStyle(OrkTheme.dim)
+                    .foregroundStyle(OrkTheme.stone)
             }
             Spacer()
             statusBadge(for: connection)
-            Button("probe") {
+            Button("Probe") {
                 probe(connection)
             }
             .buttonStyle(.bordered)
             .controlSize(.small)
-            .font(.system(size: 10, design: .monospaced))
+            .font(.system(size: 10))
             Button {
                 store.removeConnection(connection.id)
             } label: {
                 Image(systemName: "trash")
                     .font(.system(size: 10))
-                    .foregroundStyle(OrkTheme.dim)
+                    .foregroundStyle(OrkTheme.stone)
             }
             .buttonStyle(.plain)
         }
         .padding(12)
-        .background(Color.white.opacity(0.03))
-        .clipShape(RoundedRectangle(cornerRadius: 12))
-        .overlay(RoundedRectangle(cornerRadius: 12).strokeBorder(connection.kind.tint.opacity(0.25), lineWidth: 1))
+        .background(OrkTheme.raised)
+        .clipShape(RoundedRectangle(cornerRadius: 10))
+        .overlay(RoundedRectangle(cornerRadius: 10).strokeBorder(OrkTheme.hairline, lineWidth: 1))
     }
 
     @ViewBuilder private func statusBadge(for connection: DBConnection) -> some View {
@@ -124,19 +121,19 @@ struct DataToolsView: View {
         case .checking:
             ProgressView().controlSize(.small)
         case .reachable:
-            statusLabel("online", OrkTheme.green)
+            statusLabel("online", OrkTheme.moss)
         case .unreachable:
-            statusLabel("offline", OrkTheme.red)
+            statusLabel("offline", OrkTheme.brick)
         case nil:
-            statusLabel("unknown", OrkTheme.dim)
+            statusLabel("unknown", OrkTheme.faint)
         }
     }
 
     private func statusLabel(_ text: String, _ tint: Color) -> some View {
         HStack(spacing: 5) {
-            Circle().fill(tint).frame(width: 5, height: 5).shadow(color: tint, radius: 3)
+            Circle().fill(tint).frame(width: 5, height: 5)
             Text(text)
-                .font(.system(size: 10, design: .monospaced))
+                .font(.system(size: 10))
                 .foregroundStyle(tint)
         }
     }
@@ -144,18 +141,16 @@ struct DataToolsView: View {
     private var emptyHint: some View {
         VStack(spacing: 10) {
             Image(systemName: "externaldrive.connected.to.line.below")
-                .font(.system(size: 32, weight: .thin))
-                .foregroundStyle(OrkTheme.dim)
-            Text("No endpoints yet. Add your Postgres or Redis above.")
-                .font(.system(size: 11, design: .monospaced))
-                .foregroundStyle(OrkTheme.dim)
+                .font(.system(size: 28, weight: .light))
+                .foregroundStyle(OrkTheme.faint)
+            Text("No endpoints for this project")
+                .font(.system(size: 15, weight: .semibold, design: .serif))
+                .foregroundStyle(OrkTheme.cream)
+            Text("Add the Postgres or Redis this project talks to. Query consoles land in a next release.")
+                .font(.system(size: 11))
+                .foregroundStyle(OrkTheme.stone)
         }
         .frame(maxWidth: .infinity, maxHeight: .infinity)
-        .overlay(
-            RoundedRectangle(cornerRadius: 16)
-                .strokeBorder(style: StrokeStyle(lineWidth: 1, dash: [6, 6]))
-                .foregroundStyle(OrkTheme.stroke)
-        )
     }
 
     private func probe(_ connection: DBConnection) {

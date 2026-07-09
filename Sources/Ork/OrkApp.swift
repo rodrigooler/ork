@@ -21,6 +21,11 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         // Running as a bare SPM executable (swift run) needs this to get a real window with focus.
         NSApp.setActivationPolicy(.regular)
         NSApp.activate(ignoringOtherApps: true)
+        DispatchQueue.main.async {
+            if let window = NSApp.windows.first, let screen = window.screen ?? NSScreen.main {
+                window.setFrame(screen.visibleFrame, display: true)
+            }
+        }
     }
 
     func applicationShouldTerminateAfterLastWindowClosed(_ sender: NSApplication) -> Bool { true }

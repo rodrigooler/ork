@@ -1,16 +1,20 @@
 import SwiftUI
 
+/// Warm charcoal palette in the spirit of Claude Desktop: quiet surfaces,
+/// cream text, one clay accent. Agent tints stay muted so terminals dominate.
 enum OrkTheme {
-    static let bg = Color(hex: 0x05070D)
-    static let bgRaised = Color(hex: 0x0A0F1C)
-    static let stroke = Color.white.opacity(0.08)
-    static let cyan = Color(hex: 0x00E5FF)
-    static let magenta = Color(hex: 0xFF2EC8)
-    static let green = Color(hex: 0x3EF08A)
-    static let amber = Color(hex: 0xFFB454)
-    static let red = Color(hex: 0xFF5C7A)
-    static let text = Color(hex: 0xE8EEF9)
-    static let dim = Color(hex: 0x7C8698)
+    static let ink = Color(hex: 0x262624)       // window background
+    static let well = Color(hex: 0x1E1D1B)      // sidebar, terminal wells, inputs
+    static let raised = Color(hex: 0x2F2E2B)    // cards and panels
+    static let overlay = Color(hex: 0x383733)   // hover / selected surfaces
+    static let hairline = Color(hex: 0x3D3B36)  // borders
+    static let rail = Color(hex: 0x4A463F)      // flow view connectors
+    static let cream = Color(hex: 0xECEAE3)     // primary text
+    static let stone = Color(hex: 0xA5A096)     // secondary text
+    static let faint = Color(hex: 0x6F6B62)     // tertiary text
+    static let clay = Color(hex: 0xD97757)      // accent, primary actions
+    static let moss = Color(hex: 0x97B380)      // running / ok
+    static let brick = Color(hex: 0xC96A5F)     // exited / error
 }
 
 extension Color {
@@ -28,42 +32,12 @@ extension Color {
 extension View {
     func orkField() -> some View {
         textFieldStyle(.plain)
-            .font(.system(size: 11, design: .monospaced))
+            .font(.system(size: 12))
+            .foregroundStyle(OrkTheme.cream)
             .padding(.horizontal, 9)
             .padding(.vertical, 6)
-            .background(Color.white.opacity(0.05))
+            .background(OrkTheme.well)
             .clipShape(RoundedRectangle(cornerRadius: 7))
-            .overlay(RoundedRectangle(cornerRadius: 7).strokeBorder(OrkTheme.stroke, lineWidth: 1))
-    }
-}
-
-struct Backdrop: View {
-    var body: some View {
-        ZStack {
-            OrkTheme.bg
-            LinearGradient(
-                colors: [OrkTheme.cyan.opacity(0.08), .clear, OrkTheme.magenta.opacity(0.06)],
-                startPoint: .topLeading,
-                endPoint: .bottomTrailing
-            )
-            Canvas { context, size in
-                let step: CGFloat = 46
-                var path = Path()
-                var x: CGFloat = 0
-                while x <= size.width {
-                    path.move(to: CGPoint(x: x, y: 0))
-                    path.addLine(to: CGPoint(x: x, y: size.height))
-                    x += step
-                }
-                var y: CGFloat = 0
-                while y <= size.height {
-                    path.move(to: CGPoint(x: 0, y: y))
-                    path.addLine(to: CGPoint(x: size.width, y: y))
-                    y += step
-                }
-                context.stroke(path, with: .color(.white.opacity(0.02)), lineWidth: 1)
-            }
-        }
-        .ignoresSafeArea()
+            .overlay(RoundedRectangle(cornerRadius: 7).strokeBorder(OrkTheme.hairline, lineWidth: 1))
     }
 }

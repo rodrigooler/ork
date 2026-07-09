@@ -5,11 +5,12 @@ struct RootView: View {
 
     var body: some View {
         ZStack {
-            Backdrop()
+            OrkTheme.ink.ignoresSafeArea()
             HStack(spacing: 0) {
                 SidebarView()
-                    .frame(width: 236)
-                Rectangle().fill(OrkTheme.stroke).frame(width: 1)
+                    .frame(width: 232)
+                    .background(OrkTheme.well.ignoresSafeArea())
+                Rectangle().fill(OrkTheme.hairline).frame(width: 1).ignoresSafeArea()
                 content
                     .frame(maxWidth: .infinity, maxHeight: .infinity)
             }
@@ -17,42 +18,34 @@ struct RootView: View {
     }
 
     @ViewBuilder private var content: some View {
-        switch store.selection {
-        case .workspace(let id):
-            if let workspace = store.workspace(id: id) {
-                WorkspaceView(workspace: workspace)
-                    .id(workspace.id)
-            } else {
-                welcome
-            }
-        case .data:
-            DataToolsView()
-        case nil:
+        if let id = store.selectedWorkspaceID, let workspace = store.workspace(id: id) {
+            WorkspaceView(workspace: workspace)
+                .id(workspace.id)
+        } else {
             welcome
         }
     }
 
     private var welcome: some View {
-        VStack(spacing: 16) {
-            Image(systemName: "circle.hexagongrid.circle")
-                .font(.system(size: 52, weight: .thin))
-                .foregroundStyle(
-                    LinearGradient(colors: [OrkTheme.cyan, OrkTheme.magenta], startPoint: .top, endPoint: .bottom)
-                )
-            Text("welcome to ork")
-                .font(.system(size: 16, weight: .bold, design: .monospaced))
-                .foregroundStyle(OrkTheme.text)
-            Text("Add a project folder and spawn agent sessions in isolated worktrees.")
-                .font(.system(size: 11, design: .monospaced))
-                .foregroundStyle(OrkTheme.dim)
+        VStack(spacing: 14) {
+            Image(systemName: "square.stack.3d.up")
+                .font(.system(size: 36, weight: .light))
+                .foregroundStyle(OrkTheme.clay)
+            Text("Welcome to ork")
+                .font(.system(size: 22, weight: .semibold, design: .serif))
+                .foregroundStyle(OrkTheme.cream)
+            Text("Add a project and spawn agents, each in its own worktree.")
+                .font(.system(size: 12))
+                .foregroundStyle(OrkTheme.stone)
             Button {
                 pickWorkspaceFolder(store: store)
             } label: {
-                Label("add workspace", systemImage: "plus")
-                    .font(.system(size: 12, weight: .semibold, design: .monospaced))
+                Label("Add project", systemImage: "plus")
+                    .font(.system(size: 12, weight: .medium))
             }
             .buttonStyle(.borderedProminent)
-            .tint(OrkTheme.cyan.opacity(0.8))
+            .tint(OrkTheme.clay)
+            .padding(.top, 4)
         }
         .frame(maxWidth: .infinity, maxHeight: .infinity)
     }

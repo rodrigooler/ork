@@ -8,15 +8,12 @@ struct SidebarView: View {
         VStack(alignment: .leading, spacing: 0) {
             header
             ScrollView {
-                VStack(alignment: .leading, spacing: 4) {
-                    sectionHeader("WORKSPACES", showAdd: true)
+                VStack(alignment: .leading, spacing: 3) {
+                    sectionHeader
                     ForEach(store.workspaces) { workspaceRow($0) }
                     if store.workspaces.isEmpty {
                         addPlaceholder
                     }
-                    sectionHeader("TOOLS", showAdd: false)
-                        .padding(.top, 16)
-                    dataRow
                 }
                 .padding(.horizontal, 10)
             }
@@ -26,79 +23,68 @@ struct SidebarView: View {
     }
 
     private var header: some View {
-        VStack(alignment: .leading, spacing: 2) {
-            Text("ORK")
-                .font(.system(size: 21, weight: .black, design: .monospaced))
-                .kerning(7)
-                .foregroundStyle(
-                    LinearGradient(colors: [OrkTheme.cyan, OrkTheme.magenta], startPoint: .leading, endPoint: .trailing)
-                )
+        VStack(alignment: .leading, spacing: 1) {
+            Text("ork")
+                .font(.system(size: 24, weight: .semibold, design: .serif))
+                .foregroundStyle(OrkTheme.cream)
             Text("agent orchestrator")
-                .font(.system(size: 9, design: .monospaced))
-                .kerning(1.5)
-                .foregroundStyle(OrkTheme.dim)
+                .font(.system(size: 10))
+                .foregroundStyle(OrkTheme.faint)
         }
-        .padding(.top, 42)
+        .padding(.top, 44)
         .padding(.horizontal, 18)
-        .padding(.bottom, 18)
+        .padding(.bottom, 20)
     }
 
-    private func sectionHeader(_ title: String, showAdd: Bool) -> some View {
+    private var sectionHeader: some View {
         HStack {
-            Text(title)
-                .font(.system(size: 9, weight: .bold, design: .monospaced))
-                .kerning(2)
-                .foregroundStyle(OrkTheme.dim)
+            Text("Projects")
+                .font(.system(size: 10, weight: .semibold))
+                .foregroundStyle(OrkTheme.faint)
             Spacer()
-            if showAdd {
-                Button {
-                    pickWorkspaceFolder(store: store)
-                } label: {
-                    Image(systemName: "plus")
-                        .font(.system(size: 9, weight: .bold))
-                        .foregroundStyle(OrkTheme.cyan)
-                }
-                .buttonStyle(.plain)
-                .help("Add workspace folder")
+            Button {
+                pickWorkspaceFolder(store: store)
+            } label: {
+                Image(systemName: "plus")
+                    .font(.system(size: 10, weight: .semibold))
+                    .foregroundStyle(OrkTheme.stone)
             }
+            .buttonStyle(.plain)
+            .help("Add project folder")
         }
         .padding(.horizontal, 8)
-        .padding(.bottom, 4)
+        .padding(.bottom, 5)
     }
 
     private func workspaceRow(_ workspace: Workspace) -> some View {
-        let isSelected = store.selection == .workspace(workspace.id)
+        let isSelected = store.selectedWorkspaceID == workspace.id
         let count = store.sessions.filter { $0.workspaceID == workspace.id }.count
         return Button {
-            store.selection = .workspace(workspace.id)
+            store.selectedWorkspaceID = workspace.id
         } label: {
             HStack(spacing: 8) {
                 Image(systemName: "folder.fill")
-                    .font(.system(size: 10))
-                    .foregroundStyle(isSelected ? OrkTheme.cyan : OrkTheme.dim)
+                    .font(.system(size: 11))
+                    .foregroundStyle(isSelected ? OrkTheme.clay : OrkTheme.faint)
                 Text(workspace.name)
-                    .font(.system(size: 12, weight: isSelected ? .semibold : .regular, design: .monospaced))
-                    .foregroundStyle(isSelected ? OrkTheme.text : OrkTheme.dim)
+                    .font(.system(size: 12.5, weight: isSelected ? .medium : .regular))
+                    .foregroundStyle(isSelected ? OrkTheme.cream : OrkTheme.stone)
                     .lineLimit(1)
                 Spacer()
                 if count > 0 {
                     Text("\(count)")
-                        .font(.system(size: 9, weight: .bold, design: .monospaced))
-                        .foregroundStyle(OrkTheme.bg)
-                        .padding(.horizontal, 5)
+                        .font(.system(size: 10, weight: .medium, design: .monospaced))
+                        .foregroundStyle(OrkTheme.stone)
+                        .padding(.horizontal, 6)
                         .padding(.vertical, 1)
-                        .background(OrkTheme.cyan.opacity(0.9))
+                        .background(OrkTheme.overlay)
                         .clipShape(Capsule())
                 }
             }
             .padding(.horizontal, 9)
             .padding(.vertical, 7)
-            .background(isSelected ? Color.white.opacity(0.06) : .clear)
-            .clipShape(RoundedRectangle(cornerRadius: 8))
-            .overlay(
-                RoundedRectangle(cornerRadius: 8)
-                    .strokeBorder(isSelected ? OrkTheme.cyan.opacity(0.35) : .clear, lineWidth: 1)
-            )
+            .background(isSelected ? OrkTheme.overlay : .clear)
+            .clipShape(RoundedRectangle(cornerRadius: 7))
         }
         .buttonStyle(.plain)
         .contextMenu {
@@ -112,42 +98,13 @@ struct SidebarView: View {
         Button {
             pickWorkspaceFolder(store: store)
         } label: {
-            Label("add workspace", systemImage: "plus")
-                .font(.system(size: 11, design: .monospaced))
-                .foregroundStyle(OrkTheme.dim)
+            Label("Add project", systemImage: "plus")
+                .font(.system(size: 11.5))
+                .foregroundStyle(OrkTheme.stone)
                 .frame(maxWidth: .infinity)
                 .padding(.vertical, 9)
-                .overlay(
-                    RoundedRectangle(cornerRadius: 8)
-                        .strokeBorder(style: StrokeStyle(lineWidth: 1, dash: [4, 4]))
-                        .foregroundStyle(OrkTheme.stroke)
-                )
-        }
-        .buttonStyle(.plain)
-    }
-
-    private var dataRow: some View {
-        let isSelected = store.selection == .data
-        return Button {
-            store.selection = .data
-        } label: {
-            HStack(spacing: 8) {
-                Image(systemName: "cylinder.split.1x2")
-                    .font(.system(size: 10))
-                    .foregroundStyle(isSelected ? OrkTheme.cyan : OrkTheme.dim)
-                Text("data grid")
-                    .font(.system(size: 12, weight: isSelected ? .semibold : .regular, design: .monospaced))
-                    .foregroundStyle(isSelected ? OrkTheme.text : OrkTheme.dim)
-                Spacer()
-            }
-            .padding(.horizontal, 9)
-            .padding(.vertical, 7)
-            .background(isSelected ? Color.white.opacity(0.06) : .clear)
-            .clipShape(RoundedRectangle(cornerRadius: 8))
-            .overlay(
-                RoundedRectangle(cornerRadius: 8)
-                    .strokeBorder(isSelected ? OrkTheme.cyan.opacity(0.35) : .clear, lineWidth: 1)
-            )
+                .background(OrkTheme.raised.opacity(0.6))
+                .clipShape(RoundedRectangle(cornerRadius: 7))
         }
         .buttonStyle(.plain)
     }
@@ -155,12 +112,11 @@ struct SidebarView: View {
     private var footer: some View {
         HStack(spacing: 6) {
             Circle()
-                .fill(OrkTheme.green)
+                .fill(OrkTheme.moss)
                 .frame(width: 5, height: 5)
-                .shadow(color: OrkTheme.green, radius: 3)
-            Text("v0.1.0 · local first")
-                .font(.system(size: 9, design: .monospaced))
-                .foregroundStyle(OrkTheme.dim)
+            Text("v0.2.0 · local first")
+                .font(.system(size: 9.5))
+                .foregroundStyle(OrkTheme.faint)
         }
         .padding(14)
     }

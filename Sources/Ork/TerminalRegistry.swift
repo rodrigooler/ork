@@ -15,8 +15,8 @@ final class TerminalRegistry: NSObject {
         let terminal = LocalProcessTerminalView(frame: NSRect(x: 0, y: 0, width: 800, height: 480))
         terminal.processDelegate = self
         terminal.font = NSFont.monospacedSystemFont(ofSize: 12.5, weight: .regular)
-        terminal.nativeBackgroundColor = NSColor(srgbRed: 0.016, green: 0.024, blue: 0.047, alpha: 1)
-        terminal.nativeForegroundColor = NSColor(srgbRed: 0.91, green: 0.93, blue: 0.98, alpha: 1)
+        terminal.nativeBackgroundColor = NSColor(srgbRed: 0.118, green: 0.114, blue: 0.106, alpha: 1)
+        terminal.nativeForegroundColor = NSColor(srgbRed: 0.925, green: 0.918, blue: 0.89, alpha: 1)
 
         var environment = ProcessInfo.processInfo.environment
         environment["TERM"] = "xterm-256color"

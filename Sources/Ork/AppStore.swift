@@ -1,19 +1,26 @@
 import SwiftUI
 
-enum SidebarSelection: Hashable {
-    case workspace(UUID)
-    case data
-}
-
 final class AppStore: ObservableObject {
     @Published var workspaces: [Workspace] = []
     @Published var connections: [DBConnection] = []
     @Published var sessions: [TerminalSession] = []
-    @Published var selection: SidebarSelection?
+    @Published var selectedWorkspaceID: UUID?
 
     private struct Persisted: Codable {
-        var workspaces: [Workspace] = []
-        var connections: [DBConnection] = []
+        var workspaces: [Workspace]
+        var connections: [DBConnection]
+
+        init(workspaces: [Workspace], connections: [DBConnection]) {
+            self.workspaces = workspaces
+            self.connections = connections
+        }
+
+        // Tolerant decode so a schema change never wipes saved workspaces.
+        init(from decoder: Decoder) throws {
+            let container = try decoder.container(keyedBy: CodingKeys.self)
+            workspaces = (try? container.decode([Workspace].self, forKey: .workspaces)) ?? []
+            connections = (try? container.decode([DBConnection].self, forKey: .connections)) ?? []
+        }
     }
 
     private let stateURL: URL = {
@@ -29,9 +36,7 @@ final class AppStore: ObservableObject {
             workspaces = persisted.workspaces
             connections = persisted.connections
         }
-        if let first = workspaces.first {
-            selection = .workspace(first.id)
-        }
+        selectedWorkspaceID = workspaces.first?.id
     }
 
     private func save() {
@@ -43,12 +48,12 @@ final class AppStore: ObservableObject {
 
     func addWorkspace(at url: URL) {
         if let existing = workspaces.first(where: { $0.path == url.path }) {
-            selection = .workspace(existing.id)
+            selectedWorkspaceID = existing.id
             return
         }
         let workspace = Workspace(id: UUID(), name: url.lastPathComponent, path: url.path)
         workspaces.append(workspace)
-        selection = .workspace(workspace.id)
+        selectedWorkspaceID = workspace.id
         save()
     }
 
@@ -57,9 +62,10 @@ final class AppStore: ObservableObject {
             TerminalRegistry.shared.close(session.id)
         }
         sessions.removeAll { $0.workspaceID == workspace.id }
+        connections.removeAll { $0.workspaceID == workspace.id }
         workspaces.removeAll { $0.id == workspace.id }
-        if selection == .workspace(workspace.id) {
-            selection = workspaces.first.map { .workspace($0.id) }
+        if selectedWorkspaceID == workspace.id {
+            selectedWorkspaceID = workspaces.first?.id
         }
         save()
     }
@@ -100,7 +106,11 @@ final class AppStore: ObservableObject {
         sessions[index].exited = true
     }
 
-    // MARK: - Connections
+    // MARK: - Connections (scoped per workspace)
+
+    func connections(for workspaceID: UUID) -> [DBConnection] {
+        connections.filter { $0.workspaceID == workspaceID }
+    }
 
     func addConnection(_ connection: DBConnection) {
         connections.append(connection)

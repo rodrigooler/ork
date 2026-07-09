@@ -4,8 +4,10 @@ struct WorkspaceView: View {
     @EnvironmentObject private var store: AppStore
     let workspace: Workspace
 
-    enum LayoutMode: String, CaseIterable { case grid, flow }
+    enum LayoutMode { case grid, flow }
+    enum Pane { case terminals, data }
 
+    @State private var pane: Pane = .terminals
     @State private var layout: LayoutMode = .grid
     @State private var useWorktree = true
     @State private var isGitRepo = false
@@ -18,13 +20,18 @@ struct WorkspaceView: View {
     var body: some View {
         VStack(spacing: 0) {
             header
-            Rectangle().fill(OrkTheme.stroke).frame(height: 1)
-            if sessions.isEmpty {
-                emptyState
-            } else if layout == .grid {
-                grid
-            } else {
-                FlowView(workspace: workspace, sessions: sessions)
+            Rectangle().fill(OrkTheme.hairline).frame(height: 1)
+            switch pane {
+            case .terminals:
+                if sessions.isEmpty {
+                    emptyState
+                } else if layout == .grid {
+                    grid
+                } else {
+                    FlowView(workspace: workspace, sessions: sessions)
+                }
+            case .data:
+                DataPane(workspace: workspace)
             }
         }
         .task(id: workspace.id) {
@@ -44,60 +51,105 @@ struct WorkspaceView: View {
         }
     }
 
+    // MARK: - Header
+
     private var header: some View {
         HStack(spacing: 14) {
             VStack(alignment: .leading, spacing: 3) {
                 HStack(spacing: 8) {
                     Text(workspace.name)
-                        .font(.system(size: 17, weight: .bold, design: .monospaced))
-                        .foregroundStyle(OrkTheme.text)
+                        .font(.system(size: 19, weight: .semibold, design: .serif))
+                        .foregroundStyle(OrkTheme.cream)
                     if isGitRepo {
-                        Chip(text: "git", tint: OrkTheme.green)
+                        Chip(text: "git", tint: OrkTheme.moss)
                     }
                 }
                 Text(workspace.path)
                     .font(.system(size: 10, design: .monospaced))
-                    .foregroundStyle(OrkTheme.dim)
+                    .foregroundStyle(OrkTheme.faint)
                     .lineLimit(1)
                     .truncationMode(.middle)
             }
             Spacer()
 
-            Picker("Layout", selection: $layout) {
-                Image(systemName: "square.grid.2x2").tag(LayoutMode.grid)
-                Image(systemName: "point.3.connected.trianglepath.dotted").tag(LayoutMode.flow)
-            }
-            .pickerStyle(.segmented)
-            .labelsHidden()
-            .frame(width: 96)
+            paneSwitcher
 
-            Toggle(isOn: $useWorktree) {
-                Label("worktree", systemImage: "arrow.triangle.branch")
-                    .font(.system(size: 11, design: .monospaced))
-            }
-            .toggleStyle(.switch)
-            .controlSize(.small)
-            .disabled(!isGitRepo)
-            .help(isGitRepo ? "Run each session in an isolated git worktree" : "Not a git repository")
+            if pane == .terminals {
+                layoutSwitcher
 
-            Menu {
-                ForEach(AgentProfile.builtin) { agent in
-                    Button {
-                        spawn(agent)
-                    } label: {
-                        Label(agent.name, systemImage: agent.symbol)
-                    }
+                Toggle(isOn: $useWorktree) {
+                    Label("worktree", systemImage: "arrow.triangle.branch")
+                        .font(.system(size: 11))
+                        .foregroundStyle(OrkTheme.stone)
                 }
-            } label: {
-                Label("session", systemImage: "plus")
-                    .font(.system(size: 12, weight: .semibold, design: .monospaced))
+                .toggleStyle(.switch)
+                .controlSize(.small)
+                .tint(OrkTheme.clay)
+                .disabled(!isGitRepo)
+                .help(isGitRepo ? "Run each session in an isolated git worktree" : "Not a git repository")
+
+                Menu {
+                    ForEach(AgentProfile.builtin) { agent in
+                        Button {
+                            spawn(agent)
+                        } label: {
+                            Label(agent.name, systemImage: agent.symbol)
+                        }
+                    }
+                } label: {
+                    Label("session", systemImage: "plus")
+                        .font(.system(size: 12, weight: .medium))
+                }
+                .buttonStyle(.borderedProminent)
+                .tint(OrkTheme.clay)
             }
-            .buttonStyle(.borderedProminent)
-            .tint(OrkTheme.cyan.opacity(0.8))
         }
         .padding(.horizontal, 16)
         .padding(.vertical, 12)
     }
+
+    private var paneSwitcher: some View {
+        HStack(spacing: 2) {
+            switcherButton(label: "terminals", symbol: "terminal", isOn: pane == .terminals) { pane = .terminals }
+            switcherButton(label: "data", symbol: "cylinder.split.1x2", isOn: pane == .data) { pane = .data }
+        }
+        .padding(3)
+        .background(OrkTheme.well)
+        .clipShape(RoundedRectangle(cornerRadius: 9))
+        .overlay(RoundedRectangle(cornerRadius: 9).strokeBorder(OrkTheme.hairline, lineWidth: 1))
+    }
+
+    private var layoutSwitcher: some View {
+        HStack(spacing: 2) {
+            switcherButton(label: nil, symbol: "square.grid.2x2", isOn: layout == .grid) { layout = .grid }
+            switcherButton(label: nil, symbol: "point.3.connected.trianglepath.dotted", isOn: layout == .flow) { layout = .flow }
+        }
+        .padding(3)
+        .background(OrkTheme.well)
+        .clipShape(RoundedRectangle(cornerRadius: 9))
+        .overlay(RoundedRectangle(cornerRadius: 9).strokeBorder(OrkTheme.hairline, lineWidth: 1))
+    }
+
+    private func switcherButton(label: String?, symbol: String, isOn: Bool, action: @escaping () -> Void) -> some View {
+        Button(action: action) {
+            HStack(spacing: 5) {
+                Image(systemName: symbol)
+                    .font(.system(size: 10, weight: .medium))
+                if let label {
+                    Text(label)
+                        .font(.system(size: 11, weight: .medium))
+                }
+            }
+            .foregroundStyle(isOn ? OrkTheme.cream : OrkTheme.stone)
+            .padding(.horizontal, 9)
+            .padding(.vertical, 5)
+            .background(isOn ? OrkTheme.raised : .clear)
+            .clipShape(RoundedRectangle(cornerRadius: 6))
+        }
+        .buttonStyle(.plain)
+    }
+
+    // MARK: - Grid
 
     private var grid: some View {
         let columns = sessions.count <= 1 ? 1 : 2
@@ -111,7 +163,7 @@ struct WorkspaceView: View {
                 }
             }
         }
-        .padding(12)
+        .padding(14)
     }
 
     // ponytail: no scrolling; 6+ sessions get small cells, revisit when someone actually runs that many
@@ -123,22 +175,22 @@ struct WorkspaceView: View {
 
     private var emptyState: some View {
         VStack(spacing: 14) {
-            Image(systemName: "circle.hexagongrid")
-                .font(.system(size: 44, weight: .thin))
-                .foregroundStyle(OrkTheme.cyan.opacity(0.6))
-            Text("no active sessions")
-                .font(.system(size: 14, weight: .semibold, design: .monospaced))
-                .foregroundStyle(OrkTheme.text)
-            Text("Spawn an agent to start orchestrating this workspace.")
-                .font(.system(size: 11, design: .monospaced))
-                .foregroundStyle(OrkTheme.dim)
+            Image(systemName: "square.stack.3d.up")
+                .font(.system(size: 32, weight: .light))
+                .foregroundStyle(OrkTheme.faint)
+            Text("No active sessions")
+                .font(.system(size: 17, weight: .semibold, design: .serif))
+                .foregroundStyle(OrkTheme.cream)
+            Text("Spawn an agent to start working on this project.")
+                .font(.system(size: 12))
+                .foregroundStyle(OrkTheme.stone)
             HStack(spacing: 8) {
                 ForEach(AgentProfile.builtin) { agent in
                     Button {
                         spawn(agent)
                     } label: {
                         Label(agent.name, systemImage: agent.symbol)
-                            .font(.system(size: 11, design: .monospaced))
+                            .font(.system(size: 11))
                     }
                     .buttonStyle(.bordered)
                     .tint(agent.tint)
@@ -147,12 +199,6 @@ struct WorkspaceView: View {
             .padding(.top, 6)
         }
         .frame(maxWidth: .infinity, maxHeight: .infinity)
-        .overlay(
-            RoundedRectangle(cornerRadius: 16)
-                .strokeBorder(style: StrokeStyle(lineWidth: 1, dash: [6, 6]))
-                .foregroundStyle(OrkTheme.stroke)
-                .padding(12)
-        )
     }
 
     private func spawn(_ agent: AgentProfile) {
@@ -170,12 +216,12 @@ struct Chip: View {
 
     var body: some View {
         Text(text)
-            .font(.system(size: 9, weight: .semibold, design: .monospaced))
+            .font(.system(size: 9, weight: .medium, design: .monospaced))
             .foregroundStyle(tint)
             .padding(.horizontal, 6)
             .padding(.vertical, 2)
-            .background(tint.opacity(0.12))
+            .background(tint.opacity(0.10))
             .clipShape(Capsule())
-            .overlay(Capsule().strokeBorder(tint.opacity(0.4), lineWidth: 1))
+            .overlay(Capsule().strokeBorder(tint.opacity(0.25), lineWidth: 1))
     }
 }

@@ -8,7 +8,7 @@ struct SessionCard: View {
     var body: some View {
         VStack(spacing: 0) {
             header
-            Rectangle().fill(OrkTheme.stroke).frame(height: 1)
+            Rectangle().fill(OrkTheme.hairline).frame(height: 1)
             ZStack {
                 TerminalSurface(session: session)
                 if session.exited {
@@ -16,30 +16,29 @@ struct SessionCard: View {
                 }
             }
         }
-        .background(Color(.sRGB, red: 0.016, green: 0.024, blue: 0.047, opacity: 1))
-        .clipShape(RoundedRectangle(cornerRadius: 14, style: .continuous))
+        .background(OrkTheme.well)
+        .clipShape(RoundedRectangle(cornerRadius: 12, style: .continuous))
         .overlay(
-            RoundedRectangle(cornerRadius: 14, style: .continuous)
-                .strokeBorder(session.agent.tint.opacity(session.exited ? 0.25 : 0.5), lineWidth: 1)
+            RoundedRectangle(cornerRadius: 12, style: .continuous)
+                .strokeBorder(session.agent.tint.opacity(session.exited ? 0.15 : 0.3), lineWidth: 1)
         )
-        .shadow(color: session.agent.tint.opacity(0.15), radius: 14, y: 2)
+        .shadow(color: .black.opacity(0.25), radius: 10, y: 3)
     }
 
     private var header: some View {
         HStack(spacing: 8) {
             Circle()
-                .fill(session.exited ? OrkTheme.red : OrkTheme.green)
+                .fill(session.exited ? OrkTheme.brick : OrkTheme.moss)
                 .frame(width: 6, height: 6)
-                .shadow(color: session.exited ? OrkTheme.red : OrkTheme.green, radius: 3)
             Image(systemName: session.agent.symbol)
                 .font(.system(size: 11))
                 .foregroundStyle(session.agent.tint)
             Text(session.agent.name)
-                .font(.system(size: 11, weight: .semibold, design: .monospaced))
-                .foregroundStyle(OrkTheme.text)
+                .font(.system(size: 12, weight: .semibold))
+                .foregroundStyle(OrkTheme.cream)
             Text("#\(session.shortID)")
                 .font(.system(size: 9, design: .monospaced))
-                .foregroundStyle(OrkTheme.dim)
+                .foregroundStyle(OrkTheme.faint)
             if let branch = session.worktreeBranch {
                 Chip(text: branch, tint: session.agent.tint)
             }
@@ -48,24 +47,24 @@ struct SessionCard: View {
                 store.closeSession(session.id)
             } label: {
                 Image(systemName: "xmark")
-                    .font(.system(size: 9, weight: .bold))
-                    .foregroundStyle(OrkTheme.dim)
+                    .font(.system(size: 9, weight: .semibold))
+                    .foregroundStyle(OrkTheme.stone)
             }
             .buttonStyle(.plain)
             .help("Close session")
         }
         .padding(.horizontal, 10)
         .padding(.vertical, 7)
-        .background(Color.white.opacity(0.03))
+        .background(OrkTheme.raised)
     }
 
     private var exitedOverlay: some View {
         ZStack {
-            Color.black.opacity(0.55)
+            OrkTheme.ink.opacity(0.72)
             VStack(spacing: 10) {
-                Text("process exited")
-                    .font(.system(size: 12, weight: .semibold, design: .monospaced))
-                    .foregroundStyle(OrkTheme.dim)
+                Text("Process exited")
+                    .font(.system(size: 12, weight: .medium))
+                    .foregroundStyle(OrkTheme.stone)
                 Button("Close card") {
                     store.closeSession(session.id)
                 }
