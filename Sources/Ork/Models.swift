@@ -10,6 +10,17 @@ struct AgentProfile: Identifiable, Codable, Hashable {
 
     var tint: Color { Color(hex: tintHex) }
 
+    /// Reattaches the CLI to its last conversation in the session directory,
+    /// falling back to a fresh start when there is nothing to continue.
+    /// Only flags verified against the installed CLIs; others relaunch plain.
+    var resumeCommand: String? {
+        switch slug {
+        case "claude": return "(claude --continue || claude)"
+        case "opencode": return "(opencode --continue || opencode)"
+        default: return nil
+        }
+    }
+
     static let builtin: [AgentProfile] = [
         AgentProfile(slug: "claude", name: "Claude Code", command: "claude", symbol: "sparkles", tintHex: 0xD97757),
         AgentProfile(slug: "codex", name: "Codex", command: "codex", symbol: "cpu", tintHex: 0x97B380),
