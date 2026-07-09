@@ -30,6 +30,8 @@ Terminal agents multiplied, and running four of them across ad hoc terminal tabs
 | 🛢 | **Data pane per project**: register the Postgres and Redis each project talks to, live reachability probe | ✅ v0 |
 | 📊 | **Usage**: token usage from your Claude Code transcripts, 14 day chart | ✅ v0 |
 | 🔔 | **Menu bar companion**: running agents, today's tokens and exit notifications from the macOS menu bar | ✅ v0 |
+| 🏝 | **Notch glance**: hover the MacBook notch for a quick panel; an animated rail on the notch shows agents at work | ✅ v0 |
+| 🎯 | **Focus mode**: isolate one terminal over a dimmed backdrop for high-stakes work, live PTY intact | ✅ v0 |
 | 🔎 | Postgres and Redis query consoles | 🗺 roadmap |
 | 📈 | Observability pane: Loki, Tempo, Grafana, OpenTelemetry | 🗺 roadmap |
 | 📨 | RabbitMQ and Kafka endpoints | 🗺 roadmap |

@@ -4,6 +4,7 @@ import SwiftUI
 /// Lives on the notch and under the workspace header while sessions run.
 struct AnimatedRail: View {
     var height: CGFloat = 2.5
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
     @State private var phase = false
 
     private var gradient: LinearGradient {
@@ -21,21 +22,27 @@ struct AnimatedRail: View {
     }
 
     var body: some View {
-        GeometryReader { geo in
-            let width = geo.size.width
-            HStack(spacing: 0) {
-                gradient.frame(width: width)
-                gradient.frame(width: width)
+        Group {
+            if reduceMotion {
+                gradient
+            } else {
+                GeometryReader { geo in
+                    let width = geo.size.width
+                    HStack(spacing: 0) {
+                        gradient.frame(width: width)
+                        gradient.frame(width: width)
+                    }
+                    .offset(x: phase ? -width : 0)
+                }
+                .onAppear {
+                    withAnimation(.linear(duration: 3.2).repeatForever(autoreverses: false)) {
+                        phase = true
+                    }
+                }
             }
-            .offset(x: phase ? -width : 0)
         }
         .frame(height: height)
         .clipShape(Capsule())
-        .onAppear {
-            withAnimation(.linear(duration: 3.2).repeatForever(autoreverses: false)) {
-                phase = true
-            }
-        }
     }
 }
 
@@ -45,11 +52,12 @@ struct PulsingDot: View {
     var size: CGFloat = 6
     var active = true
 
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
     @State private var pulse = false
 
     var body: some View {
         ZStack {
-            if active {
+            if active && !reduceMotion {
                 Circle()
                     .stroke(color.opacity(pulse ? 0 : 0.5), lineWidth: 1.5)
                     .scaleEffect(pulse ? 2.6 : 1)
@@ -58,6 +66,7 @@ struct PulsingDot: View {
         }
         .frame(width: size, height: size)
         .onAppear {
+            guard !reduceMotion else { return }
             withAnimation(.easeOut(duration: 1.8).repeatForever(autoreverses: false)) {
                 pulse = true
             }

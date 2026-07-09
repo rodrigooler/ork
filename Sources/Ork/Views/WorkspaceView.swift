@@ -185,28 +185,28 @@ struct WorkspaceView: View {
 
     // MARK: - Grid
 
+    // One flat ForEach keyed by session id: closing a card never re-keys the
+    // survivors, so their PTY views move instead of remounting.
+    // ponytail: no scrolling; 6+ sessions get small cells, revisit when someone actually runs that many
     private var grid: some View {
-        let columns = sessions.count <= 1 ? 1 : 2
-        return VStack(spacing: 12) {
-            ForEach(rows(columns: columns), id: \.first!.id) { row in
-                HStack(spacing: 12) {
-                    ForEach(row) { session in
-                        SessionCard(session: session)
-                            .frame(maxWidth: .infinity, maxHeight: .infinity)
-                            .transition(.scale(scale: 0.96).combined(with: .opacity))
-                    }
+        GeometryReader { geo in
+            let columns = sessions.count <= 1 ? 1 : 2
+            let rowCount = max(1, (sessions.count + columns - 1) / columns)
+            let spacing: CGFloat = 12
+            let cellHeight = (geo.size.height - spacing * CGFloat(rowCount - 1)) / CGFloat(rowCount)
+            LazyVGrid(
+                columns: Array(repeating: GridItem(.flexible(), spacing: spacing), count: columns),
+                spacing: spacing
+            ) {
+                ForEach(sessions) { session in
+                    SessionCard(session: session)
+                        .frame(height: cellHeight)
+                        .transition(.scale(scale: 0.96).combined(with: .opacity))
                 }
             }
         }
         .padding(14)
         .animation(.spring(response: 0.35, dampingFraction: 0.85), value: sessions.map(\.id))
-    }
-
-    // ponytail: no scrolling; 6+ sessions get small cells, revisit when someone actually runs that many
-    private func rows(columns: Int) -> [[TerminalSession]] {
-        stride(from: 0, to: sessions.count, by: columns).map {
-            Array(sessions[$0 ..< min($0 + columns, sessions.count)])
-        }
     }
 
     private var emptyState: some View {
