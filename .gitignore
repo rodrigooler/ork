@@ -4,3 +4,7 @@ DerivedData/
 xcuserdata/
 *.xcodeproj
 .DS_Store
+
+# local agent tooling, not part of the app
+.agents/
+skills-lock.json
