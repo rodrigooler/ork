@@ -29,6 +29,19 @@ enum WorktreeService {
         return (worktree.path, branch)
     }
 
+    static func remove(repo: String, worktreePath: String, branch: String) {
+        _ = run(["git", "-C", repo, "worktree", "remove", "--force", worktreePath])
+        _ = run(["git", "-C", repo, "branch", "-D", branch])
+    }
+
+    static func orkWorktreeCount(_ repo: String) -> Int {
+        let result = run(["git", "-C", repo, "worktree", "list", "--porcelain"])
+        guard result.ok else { return 0 }
+        return result.output.components(separatedBy: "\n")
+            .filter { $0.hasPrefix("branch refs/heads/ork/") }
+            .count
+    }
+
     private static func run(_ arguments: [String]) -> (ok: Bool, output: String) {
         let process = Process()
         process.executableURL = URL(fileURLWithPath: "/usr/bin/env")

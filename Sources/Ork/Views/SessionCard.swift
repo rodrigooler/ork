@@ -5,6 +5,8 @@ struct SessionCard: View {
     @EnvironmentObject private var store: AppStore
     let session: TerminalSession
 
+    @State private var showCloseConfirm = false
+
     private var isFocused: Bool {
         store.focusedSessionID == session.id && !session.exited
     }
@@ -74,7 +76,11 @@ struct SessionCard: View {
             .buttonStyle(.plain)
             .help("Focus mode: isolate this terminal")
             Button {
-                store.closeSession(session.id)
+                if session.worktreeBranch != nil && !session.exited {
+                    showCloseConfirm = true
+                } else {
+                    store.closeSession(session.id)
+                }
             } label: {
                 Image(systemName: "xmark")
                     .font(.system(size: 9, weight: .semibold))
@@ -86,6 +92,17 @@ struct SessionCard: View {
         .padding(.horizontal, 10)
         .padding(.vertical, 7)
         .background(OrkTheme.raised)
+        .alert("Close \(session.agent.name)?", isPresented: $showCloseConfirm) {
+            Button("Remove worktree", role: .destructive) {
+                store.closeSessionAndRemoveWorktree(session.id)
+            }
+            Button("Keep worktree") {
+                store.closeSession(session.id)
+            }
+            Button("Cancel", role: .cancel) {}
+        } message: {
+            Text("Branch \(session.worktreeBranch ?? "") and its worktree directory will be permanently removed if you choose \"Remove worktree\".")
+        }
     }
 
     private var inFocusPlaceholder: some View {

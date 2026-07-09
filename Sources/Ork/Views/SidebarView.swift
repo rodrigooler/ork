@@ -34,7 +34,7 @@ struct SidebarView: View {
                         addPlaceholder
                     }
                     sectionLabel("Tools", showAdd: false)
-                        .padding(.top, 18)
+                        .padding(.top, 10)
                     usageRow
                 }
                 .padding(.horizontal, 10)
@@ -187,7 +187,7 @@ struct SidebarView: View {
                 }
             }
         }
-        .padding(.bottom, 8)
+        .padding(.bottom, 4)
     }
 
     private func sectionLabel(_ title: String, showAdd: Bool) -> some View {
@@ -231,11 +231,14 @@ struct SidebarView: View {
             isSelected: store.selection == .workspace(workspace.id),
             action: { store.selection = .workspace(workspace.id) }
         ) {
-            if count > 0 {
-                HStack(spacing: 5) {
-                    if hasRunning {
-                        PulsingDot(color: OrkTheme.moss, size: 5)
-                    }
+            HStack(spacing: 5) {
+                if !store.organizations.isEmpty {
+                    moveMenu(for: workspace)
+                }
+                if hasRunning {
+                    PulsingDot(color: OrkTheme.moss, size: 5)
+                }
+                if count > 0 {
                     Text("\(count)")
                         .font(.system(size: 10, weight: .medium, design: .monospaced))
                         .foregroundStyle(OrkTheme.stone)
@@ -273,6 +276,35 @@ struct SidebarView: View {
                 store.removeWorkspace(workspace)
             }
         }
+    }
+
+    private func moveMenu(for workspace: Workspace) -> some View {
+        Menu {
+            ForEach(store.organizations) { org in
+                Button(org.name) {
+                    store.moveWorkspace(workspace, toOrganization: org.id)
+                }
+                .disabled(workspace.organizationID == org.id)
+            }
+            Divider()
+            if workspace.organizationID != nil {
+                Button("No organization") {
+                    store.moveWorkspace(workspace, toOrganization: nil)
+                }
+            }
+            Button("New organization…") {
+                moveToNewOrgWorkspace = workspace
+                newOrgName = ""
+                showNewOrgAlert = true
+            }
+        } label: {
+            Image(systemName: "arrow.right")
+                .font(.system(size: 8, weight: .semibold))
+                .foregroundStyle(OrkTheme.faint)
+        }
+        .menuStyle(.borderlessButton)
+        .frame(width: 14)
+        .help("Move to organization")
     }
 
     private var usageRow: some View {

@@ -31,7 +31,7 @@ struct Workspace: Identifiable, Codable, Hashable {
     var organizationID: UUID?
 }
 
-struct TerminalSession: Identifiable, Hashable {
+struct TerminalSession: Identifiable, Codable, Hashable {
     let id: UUID
     let workspaceID: UUID
     let agent: AgentProfile

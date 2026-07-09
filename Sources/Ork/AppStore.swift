@@ -25,11 +25,13 @@ final class AppStore: ObservableObject {
         var workspaces: [Workspace]
         var organizations: [Organization]
         var connections: [DBConnection]
+        var sessions: [TerminalSession]
 
-        init(workspaces: [Workspace], organizations: [Organization], connections: [DBConnection]) {
+        init(workspaces: [Workspace], organizations: [Organization], connections: [DBConnection], sessions: [TerminalSession]) {
             self.workspaces = workspaces
             self.organizations = organizations
             self.connections = connections
+            self.sessions = sessions
         }
 
         init(from decoder: Decoder) throws {
@@ -37,6 +39,7 @@ final class AppStore: ObservableObject {
             workspaces = (try? container.decode([Workspace].self, forKey: .workspaces)) ?? []
             organizations = (try? container.decode([Organization].self, forKey: .organizations)) ?? []
             connections = (try? container.decode([DBConnection].self, forKey: .connections)) ?? []
+            sessions = (try? container.decode([TerminalSession].self, forKey: .sessions)) ?? []
         }
     }
 
@@ -53,12 +56,18 @@ final class AppStore: ObservableObject {
             workspaces = persisted.workspaces
             organizations = persisted.organizations
             connections = persisted.connections
+            sessions = persisted.sessions
         }
         selection = workspaces.first.map { .workspace($0.id) }
     }
 
     private func save() {
-        let persisted = Persisted(workspaces: workspaces, organizations: organizations, connections: connections)
+        let persisted = Persisted(
+            workspaces: workspaces,
+            organizations: organizations,
+            connections: connections,
+            sessions: sessions.filter { !$0.exited }
+        )
         try? JSONEncoder().encode(persisted).write(to: stateURL, options: .atomic)
     }
 
@@ -165,6 +174,7 @@ final class AppStore: ObservableObject {
             worktreeBranch: branch
         )
         sessions.append(session)
+        save()
         return session
     }
 
@@ -173,6 +183,20 @@ final class AppStore: ObservableObject {
         sessions.removeAll { $0.id == id }
         if focusedSessionID == id { focusedSessionID = nil }
         if focusModeSessionID == id { focusModeSessionID = nil }
+        save()
+    }
+
+    func closeSessionAndRemoveWorktree(_ id: UUID) {
+        guard let session = sessions.first(where: { $0.id == id }),
+              let branch = session.worktreeBranch,
+              let ws = workspace(id: session.workspaceID) else {
+            closeSession(id)
+            return
+        }
+        let dir = session.directory
+        let repo = ws.path
+        closeSession(id)
+        Task.detached { WorktreeService.remove(repo: repo, worktreePath: dir, branch: branch) }
     }
 
     func markExited(_ id: UUID) {
@@ -184,6 +208,7 @@ final class AppStore: ObservableObject {
             title: "\(session.agent.name) finished",
             body: session.worktreeBranch.map { "\(workspaceName) · \($0)" } ?? workspaceName
         )
+        save()
     }
 
     func setFocus(_ id: UUID, focused: Bool) {

@@ -11,6 +11,7 @@ struct WorkspaceView: View {
     @State private var layout: LayoutMode = .grid
     @State private var useWorktree = true
     @State private var isGitRepo = false
+    @State private var worktreeCount = 0
     @State private var errorMessage: String?
     @Namespace private var paneNamespace
     @Namespace private var layoutNamespace
@@ -38,7 +39,13 @@ struct WorkspaceView: View {
         }
         .task(id: workspace.id) {
             let path = workspace.path
-            isGitRepo = await Task.detached { WorktreeService.isGitRepo(path) }.value
+            let (isGit, wtCount) = await Task.detached {
+                let git = WorktreeService.isGitRepo(path)
+                let count = git ? WorktreeService.orkWorktreeCount(path) : 0
+                return (git, count)
+            }.value
+            isGitRepo = isGit
+            worktreeCount = wtCount
         }
         .alert(
             "Session failed",
@@ -64,6 +71,9 @@ struct WorkspaceView: View {
                         .foregroundStyle(OrkTheme.cream)
                     if isGitRepo {
                         Chip(text: "git", tint: OrkTheme.moss)
+                        if worktreeCount > 0 {
+                            Chip(text: "\(worktreeCount) worktree\(worktreeCount == 1 ? "" : "s")", tint: OrkTheme.stone)
+                        }
                     }
                 }
                 Text(workspace.path)
@@ -240,8 +250,17 @@ struct WorkspaceView: View {
     private func spawn(_ agent: AgentProfile) {
         do {
             try store.newSession(agent: agent, in: workspace, useWorktree: useWorktree && isGitRepo)
+            refreshWorktreeCount()
         } catch {
             errorMessage = error.localizedDescription
+        }
+    }
+
+    private func refreshWorktreeCount() {
+        let path = workspace.path
+        Task {
+            let count = await Task.detached { WorktreeService.orkWorktreeCount(path) }.value
+            worktreeCount = count
         }
     }
 }
