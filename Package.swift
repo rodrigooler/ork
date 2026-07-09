@@ -13,7 +13,8 @@ let package = Package(
             dependencies: [
                 .product(name: "SwiftTerm", package: "SwiftTerm")
             ],
-            path: "Sources/Ork"
+            path: "Sources/Ork",
+            resources: [.process("Resources")]
         )
     ]
 )

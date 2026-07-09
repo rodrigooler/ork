@@ -5,6 +5,11 @@ struct OrkApp: App {
     @NSApplicationDelegateAdaptor(AppDelegate.self) private var appDelegate
     @StateObject private var store = AppStore()
 
+    init() {
+        // Before any scene body renders, or SwiftUI resolves the custom font to a fallback.
+        OrkMark.registerFonts()
+    }
+
     var body: some Scene {
         WindowGroup(id: "main") {
             RootView()
@@ -29,8 +34,14 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         // Running as a bare SPM executable (swift run) needs this to get a real window with focus.
         NSApp.setActivationPolicy(.regular)
         NSApp.activate(ignoringOtherApps: true)
+        if let icon = OrkMark.dockIcon {
+            NSApp.applicationIconImage = icon
+        }
         DispatchQueue.main.async {
             if let window = NSApp.windows.first, let screen = window.screen ?? NSScreen.main {
+                // Non-opaque so the sidebar's behind-window glass can sample the desktop.
+                window.isOpaque = false
+                window.backgroundColor = .clear
                 window.setFrame(screen.visibleFrame, display: true)
             }
         }
@@ -38,4 +49,9 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
 
     // Keep living in the menu bar when the window closes.
     func applicationShouldTerminateAfterLastWindowClosed(_ sender: NSApplication) -> Bool { false }
+
+    func applicationWillTerminate(_ notification: Notification) {
+        // Stopped groups never see the PTY's SIGHUP; resume them so they exit.
+        TerminalRegistry.shared.thawAll()
+    }
 }

@@ -12,9 +12,43 @@ enum OrkTheme {
     static let cream = Color(hex: 0xECEAE3)     // primary text
     static let stone = Color(hex: 0xA5A096)     // secondary text
     static let faint = Color(hex: 0x6F6B62)     // tertiary text
-    static let clay = Color(hex: 0xD97757)      // accent, primary actions
+    static let clay = Color(hex: 0xF96B2F)      // accent, primary actions — the logo's neon frame
     static let moss = Color(hex: 0x97B380)      // running / ok
     static let brick = Color(hex: 0xC96A5F)     // exited / error
+}
+
+/// Brand display face — the logo's techno geometry (Orbitron, OFL, bundled).
+/// Headings and caps labels only; body text stays in SF for legibility.
+enum OrkFont {
+    static func display(_ size: CGFloat, weight: Font.Weight = .semibold) -> Font {
+        .custom("Orbitron", size: size).weight(weight)
+    }
+}
+
+/// One motion voice (Apple design springs): critically damped by default,
+/// bounce reserved for the notch, exits always faster than entries.
+enum OrkMotion {
+    static let hover = Animation.easeOut(duration: 0.12)
+    static let state = Animation.snappy(duration: 0.22, extraBounce: 0)
+    static let layout = Animation.smooth(duration: 0.35)
+    static let overlay = Animation.smooth(duration: 0.3)
+    static let exit = Animation.easeOut(duration: 0.18)
+}
+
+/// Instant scale-down on press for plain icon/tile buttons.
+struct PressableButtonStyle: ButtonStyle {
+    var scale: CGFloat = 0.96
+
+    func makeBody(configuration: Configuration) -> some View {
+        configuration.label
+            .scaleEffect(configuration.isPressed ? scale : 1)
+            .opacity(configuration.isPressed ? 0.8 : 1)
+            .animation(OrkMotion.hover, value: configuration.isPressed)
+    }
+}
+
+extension ButtonStyle where Self == PressableButtonStyle {
+    static var pressable: PressableButtonStyle { PressableButtonStyle() }
 }
 
 extension Color {
@@ -39,5 +73,15 @@ extension View {
             .background(OrkTheme.well)
             .clipShape(RoundedRectangle(cornerRadius: 7))
             .overlay(RoundedRectangle(cornerRadius: 7).strokeBorder(OrkTheme.hairline, lineWidth: 1))
+    }
+
+    /// Raised card recipe shared by panels, tiles and list rows.
+    func orkCard(radius: CGFloat = 10, fill: Color = OrkTheme.raised) -> some View {
+        background(fill)
+            .clipShape(RoundedRectangle(cornerRadius: radius, style: .continuous))
+            .overlay(
+                RoundedRectangle(cornerRadius: radius, style: .continuous)
+                    .strokeBorder(OrkTheme.hairline, lineWidth: 1)
+            )
     }
 }
