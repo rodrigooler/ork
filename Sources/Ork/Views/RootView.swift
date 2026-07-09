@@ -2,6 +2,7 @@ import SwiftUI
 
 struct RootView: View {
     @EnvironmentObject private var store: AppStore
+    @Environment(\.openWindow) private var openWindow
 
     var body: some View {
         ZStack {
@@ -14,6 +15,10 @@ struct RootView: View {
                 content
                     .frame(maxWidth: .infinity, maxHeight: .infinity)
             }
+        }
+        .onAppear {
+            store.openMainWindow = { openWindow(id: "main") }
+            NotchPanelController.shared.install(store: store)
         }
     }
 

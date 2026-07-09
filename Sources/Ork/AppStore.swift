@@ -14,6 +14,9 @@ final class AppStore: ObservableObject {
     @Published var claudeUsage: AgentUsage?
     @Published var usageScanned = false
 
+    /// Set by RootView; lets AppKit surfaces (notch panel) reopen the SwiftUI window.
+    var openMainWindow: (() -> Void)?
+
     private var usageLoadStarted = false
 
     private struct Persisted: Codable {

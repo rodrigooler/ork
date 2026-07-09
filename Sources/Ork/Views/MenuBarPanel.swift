@@ -1,12 +1,13 @@
 import SwiftUI
 
-/// Dropdown behind the menu bar icon, AgentPeek style: window stats up top,
-/// per-agent usage with an inline chart, then the live sessions.
-/// Shows token volume for the 5h/7d windows; plan rate-limit percentages are
-/// only visible to the agent CLIs themselves, so ork does not guess them.
-struct MenuBarPanel: View {
+/// Shared glance content: window stats up top, per-agent usage with an inline
+/// chart, live sessions, quick actions. Used by the menu bar dropdown and the
+/// notch overlay. Shows token volume for the 5h/7d windows; plan rate-limit
+/// percentages are only visible to the agent CLIs themselves, so ork does not
+/// guess them.
+struct PanelContent: View {
     @EnvironmentObject private var store: AppStore
-    @Environment(\.openWindow) private var openWindow
+    let openAction: () -> Void
 
     private var running: Int {
         store.sessions.filter { !$0.exited }.count
@@ -22,10 +23,6 @@ struct MenuBarPanel: View {
             divider
             footer
         }
-        .padding(14)
-        .frame(width: 340)
-        .background(OrkTheme.ink)
-        .preferredColorScheme(.dark)
         .task { store.loadUsageIfNeeded() }
     }
 
@@ -129,16 +126,28 @@ struct MenuBarPanel: View {
 
     private var footer: some View {
         HStack {
-            Button("Open ork") {
-                openWindow(id: "main")
-                NSApp.activate(ignoringOtherApps: true)
-            }
-            .controlSize(.small)
+            Button("Open ork", action: openAction)
+                .controlSize(.small)
             Spacer()
             Button("Quit") {
                 NSApp.terminate(nil)
             }
             .controlSize(.small)
         }
+    }
+}
+
+struct MenuBarPanel: View {
+    @Environment(\.openWindow) private var openWindow
+
+    var body: some View {
+        PanelContent {
+            openWindow(id: "main")
+            NSApp.activate(ignoringOtherApps: true)
+        }
+        .padding(14)
+        .frame(width: 340)
+        .background(OrkTheme.ink)
+        .preferredColorScheme(.dark)
     }
 }
