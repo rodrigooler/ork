@@ -7,20 +7,27 @@ struct SidebarView: View {
     @State private var renameTarget: Workspace?
     @State private var renameText = ""
 
+    private var runningCount: Int {
+        store.sessions.filter { !$0.exited }.count
+    }
+
     var body: some View {
         VStack(alignment: .leading, spacing: 0) {
             header
+            divider
             ScrollView {
                 VStack(alignment: .leading, spacing: 3) {
-                    projectsHeader
+                    sectionLabel("Projects", showAdd: true)
                     ForEach(store.workspaces) { workspaceRow($0) }
                     if store.workspaces.isEmpty {
                         addPlaceholder
                     }
-                    toolsHeader
+                    sectionLabel("Tools", showAdd: false)
+                        .padding(.top, 18)
                     usageRow
                 }
                 .padding(.horizontal, 10)
+                .padding(.top, 14)
             }
             Spacer(minLength: 0)
             footer
@@ -46,79 +53,80 @@ struct SidebarView: View {
     }
 
     private var header: some View {
-        VStack(alignment: .leading, spacing: 1) {
-            Text("ork")
-                .font(.system(size: 24, weight: .semibold, design: .serif))
-                .foregroundStyle(OrkTheme.cream)
-            Text("agent orchestrator")
-                .font(.system(size: 10))
-                .foregroundStyle(OrkTheme.faint)
+        HStack(spacing: 10) {
+            OrkMarkView(size: 30)
+            VStack(alignment: .leading, spacing: 0) {
+                Text("ork")
+                    .font(.system(size: 21, weight: .semibold, design: .serif))
+                    .foregroundStyle(OrkTheme.cream)
+                Text("agent orchestrator")
+                    .font(.system(size: 9))
+                    .kerning(0.8)
+                    .foregroundStyle(OrkTheme.faint)
+            }
+            Spacer()
         }
-        .padding(.top, 44)
-        .padding(.horizontal, 18)
-        .padding(.bottom, 20)
+        .padding(.top, 46)
+        .padding(.horizontal, 16)
+        .padding(.bottom, 14)
     }
 
-    private var projectsHeader: some View {
+    private var divider: some View {
+        Rectangle()
+            .fill(
+                LinearGradient(
+                    colors: [OrkTheme.clay.opacity(0.35), OrkTheme.hairline, OrkTheme.hairline.opacity(0)],
+                    startPoint: .leading,
+                    endPoint: .trailing
+                )
+            )
+            .frame(height: 1)
+            .padding(.horizontal, 14)
+    }
+
+    private func sectionLabel(_ title: String, showAdd: Bool) -> some View {
         HStack {
-            Text("Projects")
-                .font(.system(size: 10, weight: .semibold))
+            Text(title.uppercased())
+                .font(.system(size: 9, weight: .semibold))
+                .kerning(1.2)
                 .foregroundStyle(OrkTheme.faint)
             Spacer()
-            Button {
-                pickWorkspaceFolder(store: store)
-            } label: {
-                Image(systemName: "plus")
-                    .font(.system(size: 10, weight: .semibold))
-                    .foregroundStyle(OrkTheme.stone)
+            if showAdd {
+                Button {
+                    pickWorkspaceFolder(store: store)
+                } label: {
+                    Image(systemName: "plus")
+                        .font(.system(size: 10, weight: .semibold))
+                        .foregroundStyle(OrkTheme.stone)
+                }
+                .buttonStyle(.plain)
+                .help("Add project folder")
             }
-            .buttonStyle(.plain)
-            .help("Add project folder")
         }
         .padding(.horizontal, 8)
-        .padding(.bottom, 5)
-    }
-
-    private var toolsHeader: some View {
-        Text("Tools")
-            .font(.system(size: 10, weight: .semibold))
-            .foregroundStyle(OrkTheme.faint)
-            .padding(.horizontal, 8)
-            .padding(.top, 16)
-            .padding(.bottom, 5)
+        .padding(.bottom, 6)
     }
 
     private func workspaceRow(_ workspace: Workspace) -> some View {
-        let isSelected = store.selection == .workspace(workspace.id)
         let count = store.sessions.filter { $0.workspaceID == workspace.id }.count
-        return Button {
-            store.selection = .workspace(workspace.id)
-        } label: {
-            HStack(spacing: 8) {
-                Image(systemName: "folder.fill")
-                    .font(.system(size: 11))
-                    .foregroundStyle(isSelected ? OrkTheme.clay : OrkTheme.faint)
-                Text(workspace.name)
-                    .font(.system(size: 12.5, weight: isSelected ? .medium : .regular))
-                    .foregroundStyle(isSelected ? OrkTheme.cream : OrkTheme.stone)
-                    .lineLimit(1)
-                Spacer()
-                if count > 0 {
+        let hasRunning = store.sessions.contains { $0.workspaceID == workspace.id && !$0.exited }
+        return SidebarRow(
+            symbol: "folder.fill",
+            title: workspace.name,
+            isSelected: store.selection == .workspace(workspace.id),
+            action: { store.selection = .workspace(workspace.id) }
+        ) {
+            if count > 0 {
+                HStack(spacing: 5) {
+                    if hasRunning {
+                        PulsingDot(color: OrkTheme.moss, size: 5)
+                    }
                     Text("\(count)")
                         .font(.system(size: 10, weight: .medium, design: .monospaced))
                         .foregroundStyle(OrkTheme.stone)
-                        .padding(.horizontal, 6)
-                        .padding(.vertical, 1)
-                        .background(OrkTheme.overlay)
-                        .clipShape(Capsule())
                 }
             }
-            .padding(.horizontal, 9)
-            .padding(.vertical, 7)
-            .background(isSelected ? OrkTheme.overlay : .clear)
-            .clipShape(RoundedRectangle(cornerRadius: 7))
         }
-        .buttonStyle(.plain)
         .contextMenu {
             Button("Rename…") {
                 renameText = workspace.name
@@ -131,25 +139,14 @@ struct SidebarView: View {
     }
 
     private var usageRow: some View {
-        let isSelected = store.selection == .usage
-        return Button {
-            store.selection = .usage
-        } label: {
-            HStack(spacing: 8) {
-                Image(systemName: "chart.bar.fill")
-                    .font(.system(size: 10))
-                    .foregroundStyle(isSelected ? OrkTheme.clay : OrkTheme.faint)
-                Text("Usage")
-                    .font(.system(size: 12.5, weight: isSelected ? .medium : .regular))
-                    .foregroundStyle(isSelected ? OrkTheme.cream : OrkTheme.stone)
-                Spacer()
-            }
-            .padding(.horizontal, 9)
-            .padding(.vertical, 7)
-            .background(isSelected ? OrkTheme.overlay : .clear)
-            .clipShape(RoundedRectangle(cornerRadius: 7))
+        SidebarRow(
+            symbol: "chart.bar.fill",
+            title: "Usage",
+            isSelected: store.selection == .usage,
+            action: { store.selection = .usage }
+        ) {
+            EmptyView()
         }
-        .buttonStyle(.plain)
     }
 
     private var addPlaceholder: some View {
@@ -168,15 +165,87 @@ struct SidebarView: View {
     }
 
     private var footer: some View {
-        HStack(spacing: 6) {
-            Circle()
-                .fill(OrkTheme.moss)
-                .frame(width: 5, height: 5)
-            Text("v0.3.0 · local first")
-                .font(.system(size: 9.5))
+        HStack(spacing: 7) {
+            if runningCount > 0 {
+                PulsingDot(color: OrkTheme.moss, size: 5)
+                Text(runningCount == 1 ? "1 agent at work" : "\(runningCount) agents at work")
+                    .font(.system(size: 10))
+                    .foregroundStyle(OrkTheme.stone)
+            } else {
+                Circle().fill(OrkTheme.faint).frame(width: 5, height: 5)
+                Text("idle")
+                    .font(.system(size: 10))
+                    .foregroundStyle(OrkTheme.faint)
+            }
+            Spacer()
+            Text("v0.4.0")
+                .font(.system(size: 9, design: .monospaced))
                 .foregroundStyle(OrkTheme.faint)
         }
         .padding(14)
+    }
+}
+
+struct SidebarRow<Trailing: View>: View {
+    let symbol: String
+    let title: String
+    let isSelected: Bool
+    let action: () -> Void
+    let trailing: Trailing
+
+    @State private var hovering = false
+
+    init(
+        symbol: String,
+        title: String,
+        isSelected: Bool,
+        action: @escaping () -> Void,
+        @ViewBuilder trailing: () -> Trailing
+    ) {
+        self.symbol = symbol
+        self.title = title
+        self.isSelected = isSelected
+        self.action = action
+        self.trailing = trailing()
+    }
+
+    var body: some View {
+        Button(action: action) {
+            HStack(spacing: 9) {
+                ZStack {
+                    RoundedRectangle(cornerRadius: 6)
+                        .fill(isSelected ? OrkTheme.clay.opacity(0.16) : OrkTheme.overlay.opacity(hovering ? 0.9 : 0.55))
+                    Image(systemName: symbol)
+                        .font(.system(size: 10))
+                        .foregroundStyle(isSelected ? OrkTheme.clay : OrkTheme.stone)
+                }
+                .frame(width: 24, height: 24)
+                Text(title)
+                    .font(.system(size: 12.5, weight: isSelected ? .medium : .regular))
+                    .foregroundStyle(isSelected || hovering ? OrkTheme.cream : OrkTheme.stone)
+                    .lineLimit(1)
+                Spacer(minLength: 4)
+                trailing
+            }
+            .padding(.horizontal, 8)
+            .padding(.vertical, 6)
+            .background(
+                RoundedRectangle(cornerRadius: 8)
+                    .fill(isSelected ? OrkTheme.overlay : (hovering ? OrkTheme.overlay.opacity(0.45) : .clear))
+            )
+            .overlay(alignment: .leading) {
+                if isSelected {
+                    Capsule()
+                        .fill(OrkTheme.clay)
+                        .frame(width: 2.5, height: 18)
+                        .offset(x: -1)
+                }
+            }
+        }
+        .buttonStyle(.plain)
+        .onHover { hovering = $0 }
+        .animation(.easeOut(duration: 0.12), value: hovering)
+        .animation(.easeOut(duration: 0.15), value: isSelected)
     }
 }
 

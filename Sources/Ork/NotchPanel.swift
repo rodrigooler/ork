@@ -16,16 +16,14 @@ final class NotchPanelController {
         guard panel == nil, let screen = NSScreen.main else { return }
 
         let hasNotch = screen.safeAreaInsets.top > 0
-        let notchHeight = hasNotch ? screen.safeAreaInsets.top : 28
+        let notchHeight = hasNotch ? screen.safeAreaInsets.top : 30
         var notchWidth: CGFloat = 190
         if hasNotch, let left = screen.auxiliaryTopLeftArea, let right = screen.auxiliaryTopRightArea {
             notchWidth = screen.frame.width - left.width - right.width + 4
         }
-        // Without a notch, sit below the menu bar instead of covering it.
-        let topInset: CGFloat = hasNotch ? 0 : 25
 
         let expandedSize = NSSize(width: 660, height: 460)
-        let top = screen.frame.maxY - topInset
+        let top = screen.frame.maxY
         collapsedFrame = NSRect(
             x: screen.frame.midX - notchWidth / 2,
             y: top - notchHeight - 8,
@@ -88,17 +86,22 @@ struct NotchOverlay: View {
         .preferredColorScheme(.dark)
     }
 
-    /// Invisible on notch Macs (black on black); a small dark tab elsewhere.
-    /// The moss dot signals agents at work.
+    /// Pinned to the very top, hugging the notch. While agents run, an animated
+    /// gradient rail breathes along its bottom edge; idle shows a quiet handle.
     private var collapsed: some View {
-        UnevenRoundedRectangle(cornerRadii: .init(bottomLeading: 10, bottomTrailing: 10))
+        UnevenRoundedRectangle(cornerRadii: .init(bottomLeading: 12, bottomTrailing: 12))
             .fill(Color.black.opacity(hasNotch ? 1 : 0.92))
             .frame(width: notchWidth, height: notchHeight)
             .overlay(alignment: .bottom) {
                 if running > 0 {
-                    Circle()
-                        .fill(OrkTheme.moss)
-                        .frame(width: 4, height: 4)
+                    AnimatedRail(height: 2.5)
+                        .frame(width: notchWidth * 0.6)
+                        .padding(.bottom, 2.5)
+                        .shadow(color: OrkTheme.clay.opacity(0.55), radius: 4)
+                } else {
+                    Capsule()
+                        .fill(Color.white.opacity(0.16))
+                        .frame(width: 34, height: 3)
                         .padding(.bottom, 3)
                 }
             }

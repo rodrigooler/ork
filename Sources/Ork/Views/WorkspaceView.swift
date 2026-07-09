@@ -12,6 +12,8 @@ struct WorkspaceView: View {
     @State private var useWorktree = true
     @State private var isGitRepo = false
     @State private var errorMessage: String?
+    @Namespace private var paneNamespace
+    @Namespace private var layoutNamespace
 
     private var sessions: [TerminalSession] {
         store.sessions.filter { $0.workspaceID == workspace.id }
@@ -20,7 +22,7 @@ struct WorkspaceView: View {
     var body: some View {
         VStack(spacing: 0) {
             header
-            Rectangle().fill(OrkTheme.hairline).frame(height: 1)
+            headerDivider
             switch pane {
             case .terminals:
                 if sessions.isEmpty {
@@ -112,10 +114,23 @@ struct WorkspaceView: View {
         .padding(.vertical, 12)
     }
 
+    /// While agents run, the divider becomes the animated agent-tint rail.
+    @ViewBuilder private var headerDivider: some View {
+        if sessions.contains(where: { !$0.exited }) {
+            AnimatedRail(height: 1.5).opacity(0.75)
+        } else {
+            Rectangle().fill(OrkTheme.hairline).frame(height: 1)
+        }
+    }
+
     private var paneSwitcher: some View {
         HStack(spacing: 2) {
-            switcherButton(label: "terminals", symbol: "terminal", isOn: pane == .terminals) { pane = .terminals }
-            switcherButton(label: "data", symbol: "cylinder.split.1x2", isOn: pane == .data) { pane = .data }
+            switcherButton(label: "terminals", symbol: "terminal", isOn: pane == .terminals, ns: paneNamespace) {
+                withAnimation(.spring(response: 0.3, dampingFraction: 0.85)) { pane = .terminals }
+            }
+            switcherButton(label: "data", symbol: "cylinder.split.1x2", isOn: pane == .data, ns: paneNamespace) {
+                withAnimation(.spring(response: 0.3, dampingFraction: 0.85)) { pane = .data }
+            }
         }
         .padding(3)
         .background(OrkTheme.well)
@@ -125,8 +140,12 @@ struct WorkspaceView: View {
 
     private var layoutSwitcher: some View {
         HStack(spacing: 2) {
-            switcherButton(label: nil, symbol: "square.grid.2x2", isOn: layout == .grid) { layout = .grid }
-            switcherButton(label: nil, symbol: "point.3.connected.trianglepath.dotted", isOn: layout == .flow) { layout = .flow }
+            switcherButton(label: nil, symbol: "square.grid.2x2", isOn: layout == .grid, ns: layoutNamespace) {
+                withAnimation(.spring(response: 0.3, dampingFraction: 0.85)) { layout = .grid }
+            }
+            switcherButton(label: nil, symbol: "point.3.connected.trianglepath.dotted", isOn: layout == .flow, ns: layoutNamespace) {
+                withAnimation(.spring(response: 0.3, dampingFraction: 0.85)) { layout = .flow }
+            }
         }
         .padding(3)
         .background(OrkTheme.well)
@@ -134,7 +153,13 @@ struct WorkspaceView: View {
         .overlay(RoundedRectangle(cornerRadius: 9).strokeBorder(OrkTheme.hairline, lineWidth: 1))
     }
 
-    private func switcherButton(label: String?, symbol: String, isOn: Bool, action: @escaping () -> Void) -> some View {
+    private func switcherButton(
+        label: String?,
+        symbol: String,
+        isOn: Bool,
+        ns: Namespace.ID,
+        action: @escaping () -> Void
+    ) -> some View {
         Button(action: action) {
             HStack(spacing: 5) {
                 Image(systemName: symbol)
@@ -147,8 +172,13 @@ struct WorkspaceView: View {
             .foregroundStyle(isOn ? OrkTheme.cream : OrkTheme.stone)
             .padding(.horizontal, 9)
             .padding(.vertical, 5)
-            .background(isOn ? OrkTheme.raised : .clear)
-            .clipShape(RoundedRectangle(cornerRadius: 6))
+            .background {
+                if isOn {
+                    RoundedRectangle(cornerRadius: 6)
+                        .fill(OrkTheme.raised)
+                        .matchedGeometryEffect(id: "selection", in: ns)
+                }
+            }
         }
         .buttonStyle(.plain)
     }
@@ -163,11 +193,13 @@ struct WorkspaceView: View {
                     ForEach(row) { session in
                         SessionCard(session: session)
                             .frame(maxWidth: .infinity, maxHeight: .infinity)
+                            .transition(.scale(scale: 0.96).combined(with: .opacity))
                     }
                 }
             }
         }
         .padding(14)
+        .animation(.spring(response: 0.35, dampingFraction: 0.85), value: sessions.map(\.id))
     }
 
     // ponytail: no scrolling; 6+ sessions get small cells, revisit when someone actually runs that many
