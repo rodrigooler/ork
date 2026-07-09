@@ -27,6 +27,7 @@ final class TerminalRegistry: NSObject {
 
     func view(
         for session: TerminalSession,
+        resume: Bool = false,
         onExit: @escaping () -> Void,
         onFocus: @escaping (Bool) -> Void
     ) -> LocalProcessTerminalView {
@@ -46,7 +47,8 @@ final class TerminalRegistry: NSObject {
         environment["COLORTERM"] = "truecolor"
 
         let escapedDir = session.directory.replacingOccurrences(of: "'", with: "'\\''")
-        let bootstrap = "cd '\(escapedDir)' && \(session.agent.command)"
+        let command = resume ? (session.agent.resumeCommand ?? session.agent.command) : session.agent.command
+        let bootstrap = "cd '\(escapedDir)' && \(command)"
         terminal.startProcess(
             executable: "/bin/zsh",
             args: ["-l", "-c", bootstrap],
@@ -59,7 +61,38 @@ final class TerminalRegistry: NSObject {
         return terminal
     }
 
+    // MARK: - Freeze (SIGSTOP/SIGCONT on the PTY process group)
+
+    private var frozenPids: [UUID: pid_t] = [:]
+
+    func shellPid(for id: UUID) -> pid_t? {
+        guard let pid = views[id]?.process.shellPid, pid > 0 else { return nil }
+        return pid
+    }
+
+    /// Parks the whole group (zsh, CLI, children): CPU drops to zero, memory
+    /// stays resident but compresses. The forkpty child is its session leader,
+    /// so -pid addresses the group.
+    func freeze(_ id: UUID) -> Bool {
+        guard frozenPids[id] == nil, let pid = shellPid(for: id) else { return false }
+        guard kill(-pid, SIGSTOP) == 0 else { return false }
+        frozenPids[id] = pid
+        return true
+    }
+
+    func thaw(_ id: UUID) {
+        guard let pid = frozenPids.removeValue(forKey: id) else { return }
+        kill(-pid, SIGCONT)
+    }
+
+    /// A stopped process never delivers SIGTERM/SIGHUP, so every teardown
+    /// path must resume the group first or it leaks a suspended CLI forever.
+    func thawAll() {
+        for id in Array(frozenPids.keys) { thaw(id) }
+    }
+
     func close(_ id: UUID) {
+        thaw(id)
         guard let terminal = views.removeValue(forKey: id) else { return }
         exitHandlers[ObjectIdentifier(terminal)] = nil
         focusCallbacks[id] = nil

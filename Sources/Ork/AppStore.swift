@@ -11,6 +11,7 @@ final class AppStore: ObservableObject {
     @Published var connections: [DBConnection] = []
     @Published var sessions: [TerminalSession] = []
     @Published var selection: SidebarSelection?
+    @Published var sidebarHidden = false
     @Published var focusedSessionID: UUID?
     @Published var focusModeSessionID: UUID?
     @Published var claudeUsage: AgentUsage?
@@ -20,6 +21,18 @@ final class AppStore: ObservableObject {
     var openMainWindow: (() -> Void)?
 
     private var usageLoadStarted = false
+
+    /// Sessions parked with SIGSTOP after sustained idle CPU; see pollFreeze().
+    @Published private(set) var frozenSessionIDs: Set<UUID> = []
+    private var freezeTimer: Timer?
+    private var cpuSamples: [UUID: (cpu: Double, idlePolls: Int)] = [:]
+
+    /// Below this share of one core, a CLI is repainting its TUI, not working.
+    private static let idleCPUFraction = 0.06
+    private static let freezePollInterval: TimeInterval = 30
+    /// ORK_FREEZE_AFTER (seconds) overrides the 10 min default for testing.
+    private static let freezeAfter: TimeInterval =
+        ProcessInfo.processInfo.environment["ORK_FREEZE_AFTER"].flatMap(TimeInterval.init) ?? 600
 
     private struct Persisted: Codable {
         var workspaces: [Workspace]
@@ -50,6 +63,8 @@ final class AppStore: ObservableObject {
         return dir.appendingPathComponent("state.json")
     }()
 
+    private(set) var restoredSessionIDs: Set<UUID> = []
+
     init() {
         if let data = try? Data(contentsOf: stateURL),
            let persisted = try? JSONDecoder().decode(Persisted.self, from: data) {
@@ -57,8 +72,14 @@ final class AppStore: ObservableObject {
             organizations = persisted.organizations
             connections = persisted.connections
             sessions = persisted.sessions
+            // These sessions had a live CLI before the last quit; relaunch
+            // them with the agent's resume command so the conversation returns.
+            restoredSessionIDs = Set(persisted.sessions.map(\.id))
         }
         selection = workspaces.first.map { .workspace($0.id) }
+        freezeTimer = Timer.scheduledTimer(withTimeInterval: Self.freezePollInterval, repeats: true) { [weak self] _ in
+            self?.pollFreeze()
+        }
     }
 
     private func save() {
@@ -98,6 +119,8 @@ final class AppStore: ObservableObject {
     func removeWorkspace(_ workspace: Workspace) {
         for session in sessions where session.workspaceID == workspace.id {
             TerminalRegistry.shared.close(session.id)
+            frozenSessionIDs.remove(session.id)
+            cpuSamples[session.id] = nil
         }
         sessions.removeAll { $0.workspaceID == workspace.id }
         connections.removeAll { $0.workspaceID == workspace.id }
@@ -181,6 +204,8 @@ final class AppStore: ObservableObject {
     func closeSession(_ id: UUID) {
         TerminalRegistry.shared.close(id)
         sessions.removeAll { $0.id == id }
+        frozenSessionIDs.remove(id)
+        cpuSamples[id] = nil
         if focusedSessionID == id { focusedSessionID = nil }
         if focusModeSessionID == id { focusModeSessionID = nil }
         save()
@@ -214,9 +239,44 @@ final class AppStore: ObservableObject {
     func setFocus(_ id: UUID, focused: Bool) {
         if focused {
             focusedSessionID = id
+            wake(id)
         } else if focusedSessionID == id {
             focusedSessionID = nil
         }
+    }
+
+    // MARK: - Freeze (idle sessions parked with SIGSTOP)
+
+    private func pollFreeze() {
+        let requiredPolls = max(1, Int(Self.freezeAfter / Self.freezePollInterval))
+        for session in sessions where !session.exited && !frozenSessionIDs.contains(session.id) {
+            let id = session.id
+            guard let pid = TerminalRegistry.shared.shellPid(for: id) else {
+                cpuSamples[id] = nil
+                continue
+            }
+            let cpu = ProcessCPU.groupCPUSeconds(pgid: pid)
+            guard let prev = cpuSamples[id] else {
+                cpuSamples[id] = (cpu, 0)
+                continue
+            }
+            // Negative delta means a child process exited — activity, not idleness.
+            let delta = cpu - prev.cpu
+            let isIdle = delta >= 0 && delta < Self.idleCPUFraction * Self.freezePollInterval
+            let isFocused = focusedSessionID == id || focusModeSessionID == id
+            let idlePolls = (isIdle && !isFocused) ? prev.idlePolls + 1 : 0
+            cpuSamples[id] = (cpu, idlePolls)
+            if idlePolls >= requiredPolls, TerminalRegistry.shared.freeze(id) {
+                frozenSessionIDs.insert(id)
+            }
+        }
+    }
+
+    func wake(_ id: UUID) {
+        guard frozenSessionIDs.contains(id) else { return }
+        TerminalRegistry.shared.thaw(id)
+        frozenSessionIDs.remove(id)
+        cpuSamples[id] = nil
     }
 
     // MARK: - Connections (scoped per workspace)
