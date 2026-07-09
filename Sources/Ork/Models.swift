@@ -19,10 +19,16 @@ struct AgentProfile: Identifiable, Codable, Hashable {
     ]
 }
 
+struct Organization: Identifiable, Codable, Hashable {
+    let id: UUID
+    var name: String
+}
+
 struct Workspace: Identifiable, Codable, Hashable {
     let id: UUID
     var name: String
     var path: String
+    var organizationID: UUID?
 }
 
 struct TerminalSession: Identifiable, Hashable {

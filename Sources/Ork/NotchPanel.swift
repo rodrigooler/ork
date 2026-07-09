@@ -11,6 +11,8 @@ final class NotchPanelController {
     private var panel: NSPanel?
     private var collapsedFrame = NSRect.zero
     private var expandedFrame = NSRect.zero
+    private(set) var isExpanded = false
+    private var collapseWork: DispatchWorkItem?
 
     func install(store: AppStore) {
         guard panel == nil, let screen = NSScreen.main else { return }
@@ -58,7 +60,19 @@ final class NotchPanelController {
     }
 
     func setExpanded(_ expanded: Bool) {
+        collapseWork?.cancel()
+        guard expanded != isExpanded else { return }
+        isExpanded = expanded
         panel?.setFrame(expanded ? expandedFrame : collapsedFrame, display: true)
+    }
+
+    func scheduleCollapse() {
+        collapseWork?.cancel()
+        let item = DispatchWorkItem { [weak self] in
+            self?.setExpanded(false)
+        }
+        collapseWork = item
+        DispatchQueue.main.asyncAfter(deadline: .now() + 0.2, execute: item)
     }
 }
 
@@ -84,10 +98,15 @@ struct NotchOverlay: View {
         }
         .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .top)
         .preferredColorScheme(.dark)
+        .onHover { inside in
+            if inside {
+                if !isExpanded { expand() }
+            } else {
+                if isExpanded { collapse() }
+            }
+        }
     }
 
-    /// Pinned to the very top, hugging the notch. While agents run, an animated
-    /// gradient rail breathes along its bottom edge; idle shows a quiet handle.
     private var collapsed: some View {
         UnevenRoundedRectangle(cornerRadii: .init(bottomLeading: 12, bottomTrailing: 12))
             .fill(Color.black.opacity(hasNotch ? 1 : 0.92))
@@ -106,9 +125,6 @@ struct NotchOverlay: View {
                 }
             }
             .contentShape(Rectangle())
-            .onHover { hovering in
-                if hovering { expand() }
-            }
     }
 
     private var expanded: some View {
@@ -125,9 +141,6 @@ struct NotchOverlay: View {
         .clipShape(UnevenRoundedRectangle(cornerRadii: .init(bottomLeading: 24, bottomTrailing: 24)))
         .shadow(color: .black.opacity(0.55), radius: 26, y: 10)
         .contentShape(Rectangle())
-        .onHover { hovering in
-            if !hovering { collapse() }
-        }
         .transition(.move(edge: .top).combined(with: .opacity))
     }
 
@@ -138,8 +151,6 @@ struct NotchOverlay: View {
 
     private func collapse() {
         withAnimation(.easeOut(duration: 0.14)) { isExpanded = false }
-        DispatchQueue.main.asyncAfter(deadline: .now() + 0.15) {
-            NotchPanelController.shared.setExpanded(false)
-        }
+        NotchPanelController.shared.scheduleCollapse()
     }
 }

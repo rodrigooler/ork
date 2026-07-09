@@ -7,6 +7,7 @@ enum SidebarSelection: Hashable {
 
 final class AppStore: ObservableObject {
     @Published var workspaces: [Workspace] = []
+    @Published var organizations: [Organization] = []
     @Published var connections: [DBConnection] = []
     @Published var sessions: [TerminalSession] = []
     @Published var selection: SidebarSelection?
@@ -22,17 +23,19 @@ final class AppStore: ObservableObject {
 
     private struct Persisted: Codable {
         var workspaces: [Workspace]
+        var organizations: [Organization]
         var connections: [DBConnection]
 
-        init(workspaces: [Workspace], connections: [DBConnection]) {
+        init(workspaces: [Workspace], organizations: [Organization], connections: [DBConnection]) {
             self.workspaces = workspaces
+            self.organizations = organizations
             self.connections = connections
         }
 
-        // Tolerant decode so a schema change never wipes saved workspaces.
         init(from decoder: Decoder) throws {
             let container = try decoder.container(keyedBy: CodingKeys.self)
             workspaces = (try? container.decode([Workspace].self, forKey: .workspaces)) ?? []
+            organizations = (try? container.decode([Organization].self, forKey: .organizations)) ?? []
             connections = (try? container.decode([DBConnection].self, forKey: .connections)) ?? []
         }
     }
@@ -48,24 +51,28 @@ final class AppStore: ObservableObject {
         if let data = try? Data(contentsOf: stateURL),
            let persisted = try? JSONDecoder().decode(Persisted.self, from: data) {
             workspaces = persisted.workspaces
+            organizations = persisted.organizations
             connections = persisted.connections
         }
         selection = workspaces.first.map { .workspace($0.id) }
     }
 
     private func save() {
-        let persisted = Persisted(workspaces: workspaces, connections: connections)
+        let persisted = Persisted(workspaces: workspaces, organizations: organizations, connections: connections)
         try? JSONEncoder().encode(persisted).write(to: stateURL, options: .atomic)
     }
 
     // MARK: - Workspaces
 
-    func addWorkspace(at url: URL) {
+    func addWorkspace(at url: URL, organizationID: UUID? = nil) {
         if let existing = workspaces.first(where: { $0.path == url.path }) {
+            if let orgID = organizationID, existing.organizationID != orgID {
+                moveWorkspace(existing, toOrganization: orgID)
+            }
             selection = .workspace(existing.id)
             return
         }
-        let workspace = Workspace(id: UUID(), name: url.lastPathComponent, path: url.path)
+        let workspace = Workspace(id: UUID(), name: url.lastPathComponent, path: url.path, organizationID: organizationID)
         workspaces.append(workspace)
         selection = .workspace(workspace.id)
         save()
@@ -97,6 +104,46 @@ final class AppStore: ObservableObject {
 
     func workspace(id: UUID) -> Workspace? {
         workspaces.first { $0.id == id }
+    }
+
+    func moveWorkspace(_ workspace: Workspace, toOrganization orgID: UUID?) {
+        guard let index = workspaces.firstIndex(where: { $0.id == workspace.id }) else { return }
+        workspaces[index].organizationID = orgID
+        save()
+    }
+
+    // MARK: - Organizations
+
+    @discardableResult
+    func addOrganization(name: String) -> Organization {
+        let org = Organization(id: UUID(), name: name)
+        organizations.append(org)
+        save()
+        return org
+    }
+
+    func renameOrganization(_ org: Organization, to newName: String) {
+        let trimmed = newName.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !trimmed.isEmpty,
+              let index = organizations.firstIndex(where: { $0.id == org.id }) else { return }
+        organizations[index].name = trimmed
+        save()
+    }
+
+    func removeOrganization(_ org: Organization) {
+        for i in workspaces.indices where workspaces[i].organizationID == org.id {
+            workspaces[i].organizationID = nil
+        }
+        organizations.removeAll { $0.id == org.id }
+        save()
+    }
+
+    func workspaces(in orgID: UUID) -> [Workspace] {
+        workspaces.filter { $0.organizationID == orgID }
+    }
+
+    var ungroupedWorkspaces: [Workspace] {
+        workspaces.filter { $0.organizationID == nil }
     }
 
     // MARK: - Sessions

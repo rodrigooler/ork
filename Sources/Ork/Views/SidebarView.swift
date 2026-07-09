@@ -6,6 +6,12 @@ struct SidebarView: View {
 
     @State private var renameTarget: Workspace?
     @State private var renameText = ""
+    @State private var collapsedOrgs: Set<UUID> = []
+    @State private var showNewOrgAlert = false
+    @State private var newOrgName = ""
+    @State private var renameOrgTarget: Organization?
+    @State private var renameOrgText = ""
+    @State private var moveToNewOrgWorkspace: Workspace?
 
     private var runningCount: Int {
         store.sessions.filter { !$0.exited }.count
@@ -17,8 +23,13 @@ struct SidebarView: View {
             divider
             ScrollView {
                 VStack(alignment: .leading, spacing: 3) {
+                    ForEach(store.organizations) { org in
+                        orgSection(org)
+                    }
+
+                    let ungrouped = store.ungroupedWorkspaces
                     sectionLabel("Projects", showAdd: true)
-                    ForEach(store.workspaces) { workspaceRow($0) }
+                    ForEach(ungrouped) { workspaceRow($0) }
                     if store.workspaces.isEmpty {
                         addPlaceholder
                     }
@@ -49,6 +60,42 @@ struct SidebarView: View {
             Button("Cancel", role: .cancel) { renameTarget = nil }
         } message: {
             Text("Display name only; the folder on disk keeps its name.")
+        }
+        .alert(
+            "New organization",
+            isPresented: $showNewOrgAlert
+        ) {
+            TextField("Name", text: $newOrgName)
+            Button("Create") {
+                let trimmed = newOrgName.trimmingCharacters(in: .whitespacesAndNewlines)
+                guard !trimmed.isEmpty else { return }
+                let org = store.addOrganization(name: trimmed)
+                if let ws = moveToNewOrgWorkspace {
+                    store.moveWorkspace(ws, toOrganization: org.id)
+                    moveToNewOrgWorkspace = nil
+                }
+                newOrgName = ""
+            }
+            Button("Cancel", role: .cancel) {
+                newOrgName = ""
+                moveToNewOrgWorkspace = nil
+            }
+        }
+        .alert(
+            "Rename organization",
+            isPresented: .init(
+                get: { renameOrgTarget != nil },
+                set: { if !$0 { renameOrgTarget = nil } }
+            )
+        ) {
+            TextField("Name", text: $renameOrgText)
+            Button("Rename") {
+                if let target = renameOrgTarget {
+                    store.renameOrganization(target, to: renameOrgText)
+                }
+                renameOrgTarget = nil
+            }
+            Button("Cancel", role: .cancel) { renameOrgTarget = nil }
         }
     }
 
@@ -84,6 +131,65 @@ struct SidebarView: View {
             .padding(.horizontal, 14)
     }
 
+    private func orgSection(_ org: Organization) -> some View {
+        let isCollapsed = collapsedOrgs.contains(org.id)
+        let orgWorkspaces = store.workspaces(in: org.id)
+        let orgRunning = store.sessions.filter { s in
+            !s.exited && orgWorkspaces.contains { $0.id == s.workspaceID }
+        }.count
+        return VStack(alignment: .leading, spacing: 3) {
+            HStack(spacing: 7) {
+                Image(systemName: isCollapsed ? "chevron.right" : "chevron.down")
+                    .font(.system(size: 8, weight: .semibold))
+                    .foregroundStyle(OrkTheme.faint)
+                    .frame(width: 10)
+                Text(org.name.uppercased())
+                    .font(.system(size: 9, weight: .semibold))
+                    .kerning(1.2)
+                    .foregroundStyle(OrkTheme.stone)
+                if orgRunning > 0 {
+                    PulsingDot(color: OrkTheme.moss, size: 4)
+                }
+                Spacer()
+                Button {
+                    pickWorkspaceFolder(store: store, organizationID: org.id)
+                } label: {
+                    Image(systemName: "plus")
+                        .font(.system(size: 10, weight: .semibold))
+                        .foregroundStyle(OrkTheme.stone)
+                }
+                .buttonStyle(.plain)
+                .help("Add project to \(org.name)")
+            }
+            .padding(.horizontal, 8)
+            .padding(.vertical, 4)
+            .contentShape(Rectangle())
+            .onTapGesture {
+                withAnimation(.easeOut(duration: 0.12)) {
+                    if isCollapsed { collapsedOrgs.remove(org.id) }
+                    else { collapsedOrgs.insert(org.id) }
+                }
+            }
+            .contextMenu {
+                Button("Rename…") {
+                    renameOrgText = org.name
+                    renameOrgTarget = org
+                }
+                Button("Delete organization", role: .destructive) {
+                    store.removeOrganization(org)
+                }
+            }
+
+            if !isCollapsed {
+                ForEach(orgWorkspaces) { workspace in
+                    workspaceRow(workspace)
+                        .padding(.leading, 10)
+                }
+            }
+        }
+        .padding(.bottom, 8)
+    }
+
     private func sectionLabel(_ title: String, showAdd: Bool) -> some View {
         HStack {
             Text(title.uppercased())
@@ -92,15 +198,24 @@ struct SidebarView: View {
                 .foregroundStyle(OrkTheme.faint)
             Spacer()
             if showAdd {
-                Button {
-                    pickWorkspaceFolder(store: store)
+                Menu {
+                    Button("Add project…") {
+                        pickWorkspaceFolder(store: store)
+                    }
+                    Divider()
+                    Button("New organization…") {
+                        moveToNewOrgWorkspace = nil
+                        newOrgName = ""
+                        showNewOrgAlert = true
+                    }
                 } label: {
                     Image(systemName: "plus")
                         .font(.system(size: 10, weight: .semibold))
                         .foregroundStyle(OrkTheme.stone)
                 }
-                .buttonStyle(.plain)
-                .help("Add project folder")
+                .menuStyle(.borderlessButton)
+                .frame(width: 16)
+                .help("Add project or organization")
             }
         }
         .padding(.horizontal, 8)
@@ -132,6 +247,28 @@ struct SidebarView: View {
                 renameText = workspace.name
                 renameTarget = workspace
             }
+            if !store.organizations.isEmpty {
+                Menu("Move to…") {
+                    ForEach(store.organizations) { org in
+                        Button(org.name) {
+                            store.moveWorkspace(workspace, toOrganization: org.id)
+                        }
+                        .disabled(workspace.organizationID == org.id)
+                    }
+                    Divider()
+                    if workspace.organizationID != nil {
+                        Button("No organization") {
+                            store.moveWorkspace(workspace, toOrganization: nil)
+                        }
+                    }
+                }
+            }
+            Button("New organization…") {
+                moveToNewOrgWorkspace = workspace
+                newOrgName = ""
+                showNewOrgAlert = true
+            }
+            Divider()
             Button("Remove from ork", role: .destructive) {
                 store.removeWorkspace(workspace)
             }
@@ -249,7 +386,7 @@ struct SidebarRow<Trailing: View>: View {
     }
 }
 
-func pickWorkspaceFolder(store: AppStore) {
+func pickWorkspaceFolder(store: AppStore, organizationID: UUID? = nil) {
     let panel = NSOpenPanel()
     panel.canChooseFiles = false
     panel.canChooseDirectories = true
@@ -257,6 +394,6 @@ func pickWorkspaceFolder(store: AppStore) {
     panel.prompt = "Add"
     panel.message = "Choose a project folder to orchestrate"
     if panel.runModal() == .OK, let url = panel.url {
-        store.addWorkspace(at: url)
+        store.addWorkspace(at: url, organizationID: organizationID)
     }
 }
