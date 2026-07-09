@@ -63,31 +63,24 @@ struct WorkspaceView: View {
     // MARK: - Header
 
     private var header: some View {
-        HStack(spacing: 14) {
-            VStack(alignment: .leading, spacing: 3) {
-                HStack(spacing: 8) {
-                    Text(workspace.name)
-                        .font(.system(size: 19, weight: .semibold, design: .serif))
-                        .foregroundStyle(OrkTheme.cream)
-                    if isGitRepo {
-                        Chip(text: "git", tint: OrkTheme.moss)
-                        if worktreeCount > 0 {
-                            Chip(text: "\(worktreeCount) worktree\(worktreeCount == 1 ? "" : "s")", tint: OrkTheme.stone)
-                        }
+        HStack(spacing: 12) {
+            HStack(spacing: 7) {
+                Text(workspace.name)
+                    .font(.system(size: 15, weight: .semibold, design: .serif))
+                    .foregroundStyle(OrkTheme.cream)
+                    .help(workspace.path)
+                if isGitRepo {
+                    Chip(text: "git", tint: OrkTheme.moss)
+                    if worktreeCount > 0 {
+                        Chip(text: "\(worktreeCount) wt", tint: OrkTheme.stone)
                     }
                 }
-                Text(workspace.path)
-                    .font(.system(size: 10, design: .monospaced))
-                    .foregroundStyle(OrkTheme.faint)
-                    .lineLimit(1)
-                    .truncationMode(.middle)
             }
             Spacer()
 
             paneSwitcher
 
-            // Ghosted instead of removed so switching panes never reflows the header.
-            HStack(spacing: 14) {
+            HStack(spacing: 12) {
                 layoutSwitcher
 
                 Toggle(isOn: $useWorktree) {
@@ -120,8 +113,8 @@ struct WorkspaceView: View {
             .allowsHitTesting(pane == .terminals)
             .animation(.easeOut(duration: 0.12), value: pane)
         }
-        .padding(.horizontal, 16)
-        .padding(.vertical, 12)
+        .padding(.horizontal, 14)
+        .padding(.vertical, 7)
     }
 
     /// While agents run, the divider becomes the animated agent-tint rail.
