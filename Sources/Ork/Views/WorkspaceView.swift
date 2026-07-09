@@ -74,7 +74,8 @@ struct WorkspaceView: View {
 
             paneSwitcher
 
-            if pane == .terminals {
+            // Ghosted instead of removed so switching panes never reflows the header.
+            HStack(spacing: 14) {
                 layoutSwitcher
 
                 Toggle(isOn: $useWorktree) {
@@ -103,6 +104,9 @@ struct WorkspaceView: View {
                 .buttonStyle(.borderedProminent)
                 .tint(OrkTheme.clay)
             }
+            .opacity(pane == .terminals ? 1 : 0)
+            .allowsHitTesting(pane == .terminals)
+            .animation(.easeOut(duration: 0.12), value: pane)
         }
         .padding(.horizontal, 16)
         .padding(.vertical, 12)

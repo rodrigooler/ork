@@ -6,13 +6,21 @@ struct OrkApp: App {
     @StateObject private var store = AppStore()
 
     var body: some Scene {
-        WindowGroup {
+        WindowGroup(id: "main") {
             RootView()
                 .environmentObject(store)
                 .preferredColorScheme(.dark)
                 .frame(minWidth: 1080, minHeight: 680)
         }
         .windowStyle(.hiddenTitleBar)
+
+        MenuBarExtra {
+            MenuBarPanel()
+                .environmentObject(store)
+        } label: {
+            Image(nsImage: OrkMark.menuBar)
+        }
+        .menuBarExtraStyle(.window)
     }
 }
 
@@ -28,5 +36,6 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         }
     }
 
-    func applicationShouldTerminateAfterLastWindowClosed(_ sender: NSApplication) -> Bool { true }
+    // Keep living in the menu bar when the window closes.
+    func applicationShouldTerminateAfterLastWindowClosed(_ sender: NSApplication) -> Bool { false }
 }

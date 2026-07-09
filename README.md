@@ -27,7 +27,9 @@ Terminal agents multiplied, and running four of them across ad hoc terminal tabs
 | 🌿 | **Worktree isolation**: each session runs on its own branch in a dedicated worktree, created with plain `git worktree add` | ✅ v0 |
 | ▦ | **Terminal grid**: all sessions side by side | ✅ v0 |
 | ⬡ | **Flow view**: workspace and agents as a connected topology, click a node to focus its terminal | ✅ v0 |
-| 🛢 | **Data grid**: register Postgres and Redis endpoints, live reachability probe | ✅ v0 |
+| 🛢 | **Data pane per project**: register the Postgres and Redis each project talks to, live reachability probe | ✅ v0 |
+| 📊 | **Usage**: token usage from your Claude Code transcripts, 14 day chart | ✅ v0 |
+| 🔔 | **Menu bar companion**: running agents, today's tokens and exit notifications from the macOS menu bar | ✅ v0 |
 | 🔎 | Postgres and Redis query consoles | 🗺 roadmap |
 | 📈 | Observability pane: Loki, Tempo, Grafana, OpenTelemetry | 🗺 roadmap |
 | 📨 | RabbitMQ and Kafka endpoints | 🗺 roadmap |
@@ -77,9 +79,12 @@ Sources/Ork/
 ├── Models.swift            AgentProfile, Workspace, TerminalSession, DBConnection
 ├── AppStore.swift          app state + JSON persistence (Application Support)
 ├── WorktreeService.swift   git worktree plumbing
-├── TerminalRegistry.swift  PTY lifecycle, keeps terminals alive across layout changes
+├── TerminalRegistry.swift  PTY lifecycle, focus tracking, terminal font stack
+├── UsageService.swift      token usage from Claude Code transcripts
+├── Notifier.swift          exit notifications (osascript)
 ├── Reachability.swift      TCP probe for data endpoints
-└── Views/                  SwiftUI: sidebar, grid, flow topology, data grid
+├── Logo.swift              menu bar mark (vector source in Assets/logo.svg)
+└── Views/                  SwiftUI: sidebar, grid, flow topology, data pane, usage, menu bar panel
 ```
 
 One external dependency: [SwiftTerm](https://github.com/migueldeicaza/SwiftTerm) for terminal emulation.

@@ -1,0 +1,14 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512" width="512" height="512">
+  <!-- ork: an orchestrator hub (clay) coordinating agent nodes, echoing the flow view rail -->
+  <rect x="16" y="16" width="480" height="480" rx="112" fill="#262624" stroke="#3D3B36" stroke-width="8"/>
+  <g stroke="#4A463F" stroke-width="16" stroke-linecap="round">
+    <line x1="256" y1="256" x2="256" y2="128"/>
+    <line x1="256" y1="256" x2="145" y2="322"/>
+    <line x1="256" y1="256" x2="367" y2="322"/>
+  </g>
+  <circle cx="256" cy="128" r="36" fill="#97B380"/>
+  <circle cx="145" cy="322" r="36" fill="#7FA3C4"/>
+  <circle cx="367" cy="322" r="36" fill="#C7A566"/>
+  <circle cx="256" cy="256" r="54" fill="#D97757"/>
+  <circle cx="256" cy="256" r="21" fill="#262624"/>
+</svg>

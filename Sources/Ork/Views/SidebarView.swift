@@ -4,21 +4,44 @@ import SwiftUI
 struct SidebarView: View {
     @EnvironmentObject private var store: AppStore
 
+    @State private var renameTarget: Workspace?
+    @State private var renameText = ""
+
     var body: some View {
         VStack(alignment: .leading, spacing: 0) {
             header
             ScrollView {
                 VStack(alignment: .leading, spacing: 3) {
-                    sectionHeader
+                    projectsHeader
                     ForEach(store.workspaces) { workspaceRow($0) }
                     if store.workspaces.isEmpty {
                         addPlaceholder
                     }
+                    toolsHeader
+                    usageRow
                 }
                 .padding(.horizontal, 10)
             }
             Spacer(minLength: 0)
             footer
+        }
+        .alert(
+            "Rename project",
+            isPresented: .init(
+                get: { renameTarget != nil },
+                set: { if !$0 { renameTarget = nil } }
+            )
+        ) {
+            TextField("Name", text: $renameText)
+            Button("Rename") {
+                if let target = renameTarget {
+                    store.renameWorkspace(target, to: renameText)
+                }
+                renameTarget = nil
+            }
+            Button("Cancel", role: .cancel) { renameTarget = nil }
+        } message: {
+            Text("Display name only; the folder on disk keeps its name.")
         }
     }
 
@@ -36,7 +59,7 @@ struct SidebarView: View {
         .padding(.bottom, 20)
     }
 
-    private var sectionHeader: some View {
+    private var projectsHeader: some View {
         HStack {
             Text("Projects")
                 .font(.system(size: 10, weight: .semibold))
@@ -56,11 +79,20 @@ struct SidebarView: View {
         .padding(.bottom, 5)
     }
 
+    private var toolsHeader: some View {
+        Text("Tools")
+            .font(.system(size: 10, weight: .semibold))
+            .foregroundStyle(OrkTheme.faint)
+            .padding(.horizontal, 8)
+            .padding(.top, 16)
+            .padding(.bottom, 5)
+    }
+
     private func workspaceRow(_ workspace: Workspace) -> some View {
-        let isSelected = store.selectedWorkspaceID == workspace.id
+        let isSelected = store.selection == .workspace(workspace.id)
         let count = store.sessions.filter { $0.workspaceID == workspace.id }.count
         return Button {
-            store.selectedWorkspaceID = workspace.id
+            store.selection = .workspace(workspace.id)
         } label: {
             HStack(spacing: 8) {
                 Image(systemName: "folder.fill")
@@ -88,10 +120,36 @@ struct SidebarView: View {
         }
         .buttonStyle(.plain)
         .contextMenu {
+            Button("Rename…") {
+                renameText = workspace.name
+                renameTarget = workspace
+            }
             Button("Remove from ork", role: .destructive) {
                 store.removeWorkspace(workspace)
             }
         }
+    }
+
+    private var usageRow: some View {
+        let isSelected = store.selection == .usage
+        return Button {
+            store.selection = .usage
+        } label: {
+            HStack(spacing: 8) {
+                Image(systemName: "chart.bar.fill")
+                    .font(.system(size: 10))
+                    .foregroundStyle(isSelected ? OrkTheme.clay : OrkTheme.faint)
+                Text("Usage")
+                    .font(.system(size: 12.5, weight: isSelected ? .medium : .regular))
+                    .foregroundStyle(isSelected ? OrkTheme.cream : OrkTheme.stone)
+                Spacer()
+            }
+            .padding(.horizontal, 9)
+            .padding(.vertical, 7)
+            .background(isSelected ? OrkTheme.overlay : .clear)
+            .clipShape(RoundedRectangle(cornerRadius: 7))
+        }
+        .buttonStyle(.plain)
     }
 
     private var addPlaceholder: some View {
@@ -114,7 +172,7 @@ struct SidebarView: View {
             Circle()
                 .fill(OrkTheme.moss)
                 .frame(width: 5, height: 5)
-            Text("v0.2.0 · local first")
+            Text("v0.3.0 · local first")
                 .font(.system(size: 9.5))
                 .foregroundStyle(OrkTheme.faint)
         }

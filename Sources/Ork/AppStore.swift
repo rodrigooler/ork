@@ -1,10 +1,20 @@
 import SwiftUI
 
+enum SidebarSelection: Hashable {
+    case workspace(UUID)
+    case usage
+}
+
 final class AppStore: ObservableObject {
     @Published var workspaces: [Workspace] = []
     @Published var connections: [DBConnection] = []
     @Published var sessions: [TerminalSession] = []
-    @Published var selectedWorkspaceID: UUID?
+    @Published var selection: SidebarSelection?
+    @Published var focusedSessionID: UUID?
+    @Published var claudeUsage: AgentUsage?
+    @Published var usageScanned = false
+
+    private var usageLoadStarted = false
 
     private struct Persisted: Codable {
         var workspaces: [Workspace]
@@ -36,7 +46,7 @@ final class AppStore: ObservableObject {
             workspaces = persisted.workspaces
             connections = persisted.connections
         }
-        selectedWorkspaceID = workspaces.first?.id
+        selection = workspaces.first.map { .workspace($0.id) }
     }
 
     private func save() {
@@ -48,12 +58,20 @@ final class AppStore: ObservableObject {
 
     func addWorkspace(at url: URL) {
         if let existing = workspaces.first(where: { $0.path == url.path }) {
-            selectedWorkspaceID = existing.id
+            selection = .workspace(existing.id)
             return
         }
         let workspace = Workspace(id: UUID(), name: url.lastPathComponent, path: url.path)
         workspaces.append(workspace)
-        selectedWorkspaceID = workspace.id
+        selection = .workspace(workspace.id)
+        save()
+    }
+
+    func renameWorkspace(_ workspace: Workspace, to newName: String) {
+        let trimmed = newName.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !trimmed.isEmpty,
+              let index = workspaces.firstIndex(where: { $0.id == workspace.id }) else { return }
+        workspaces[index].name = trimmed
         save()
     }
 
@@ -64,8 +82,8 @@ final class AppStore: ObservableObject {
         sessions.removeAll { $0.workspaceID == workspace.id }
         connections.removeAll { $0.workspaceID == workspace.id }
         workspaces.removeAll { $0.id == workspace.id }
-        if selectedWorkspaceID == workspace.id {
-            selectedWorkspaceID = workspaces.first?.id
+        if selection == .workspace(workspace.id) {
+            selection = workspaces.first.map { .workspace($0.id) }
         }
         save()
     }
@@ -99,11 +117,26 @@ final class AppStore: ObservableObject {
     func closeSession(_ id: UUID) {
         TerminalRegistry.shared.close(id)
         sessions.removeAll { $0.id == id }
+        if focusedSessionID == id { focusedSessionID = nil }
     }
 
     func markExited(_ id: UUID) {
-        guard let index = sessions.firstIndex(where: { $0.id == id }) else { return }
+        guard let index = sessions.firstIndex(where: { $0.id == id }), !sessions[index].exited else { return }
         sessions[index].exited = true
+        let session = sessions[index]
+        let workspaceName = workspace(id: session.workspaceID)?.name ?? "project"
+        Notifier.notify(
+            title: "\(session.agent.name) finished",
+            body: session.worktreeBranch.map { "\(workspaceName) · \($0)" } ?? workspaceName
+        )
+    }
+
+    func setFocus(_ id: UUID, focused: Bool) {
+        if focused {
+            focusedSessionID = id
+        } else if focusedSessionID == id {
+            focusedSessionID = nil
+        }
     }
 
     // MARK: - Connections (scoped per workspace)
@@ -120,5 +153,19 @@ final class AppStore: ObservableObject {
     func removeConnection(_ id: UUID) {
         connections.removeAll { $0.id == id }
         save()
+    }
+
+    // MARK: - Usage
+
+    func loadUsageIfNeeded() {
+        guard !usageLoadStarted else { return }
+        usageLoadStarted = true
+        Task.detached(priority: .utility) { [weak self] in
+            let usage = UsageService.claudeCode()
+            DispatchQueue.main.async {
+                self?.claudeUsage = usage
+                self?.usageScanned = true
+            }
+        }
     }
 }

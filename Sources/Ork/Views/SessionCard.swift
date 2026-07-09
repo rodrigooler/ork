@@ -5,6 +5,10 @@ struct SessionCard: View {
     @EnvironmentObject private var store: AppStore
     let session: TerminalSession
 
+    private var isFocused: Bool {
+        store.focusedSessionID == session.id && !session.exited
+    }
+
     var body: some View {
         VStack(spacing: 0) {
             header
@@ -20,9 +24,13 @@ struct SessionCard: View {
         .clipShape(RoundedRectangle(cornerRadius: 12, style: .continuous))
         .overlay(
             RoundedRectangle(cornerRadius: 12, style: .continuous)
-                .strokeBorder(session.agent.tint.opacity(session.exited ? 0.15 : 0.3), lineWidth: 1)
+                .strokeBorder(
+                    session.agent.tint.opacity(session.exited ? 0.15 : (isFocused ? 0.85 : 0.28)),
+                    lineWidth: isFocused ? 1.5 : 1
+                )
         )
         .shadow(color: .black.opacity(0.25), radius: 10, y: 3)
+        .animation(.easeOut(duration: 0.12), value: isFocused)
     }
 
     private var header: some View {
@@ -35,7 +43,7 @@ struct SessionCard: View {
                 .foregroundStyle(session.agent.tint)
             Text(session.agent.name)
                 .font(.system(size: 12, weight: .semibold))
-                .foregroundStyle(OrkTheme.cream)
+                .foregroundStyle(isFocused ? OrkTheme.cream : OrkTheme.stone)
             Text("#\(session.shortID)")
                 .font(.system(size: 9, design: .monospaced))
                 .foregroundStyle(OrkTheme.faint)
@@ -43,6 +51,11 @@ struct SessionCard: View {
                 Chip(text: branch, tint: session.agent.tint)
             }
             Spacer()
+            if isFocused {
+                Text("focused")
+                    .font(.system(size: 9, weight: .medium))
+                    .foregroundStyle(session.agent.tint)
+            }
             Button {
                 store.closeSession(session.id)
             } label: {
@@ -82,10 +95,14 @@ struct TerminalSurface: NSViewRepresentable {
     func makeNSView(context: Context) -> LocalProcessTerminalView {
         let store = store
         let id = session.id
-        return TerminalRegistry.shared.view(for: session) {
-            store.markExited(id)
-        }
+        return TerminalRegistry.shared.view(
+            for: session,
+            onExit: { store.markExited(id) },
+            onFocus: { focused in store.setFocus(id, focused: focused) }
+        )
     }
 
-    func updateNSView(_ nsView: LocalProcessTerminalView, context: Context) {}
+    func updateNSView(_ nsView: LocalProcessTerminalView, context: Context) {
+        TerminalRegistry.shared.observeWindowIfNeeded(nsView.window)
+    }
 }

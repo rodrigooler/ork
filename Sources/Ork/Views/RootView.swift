@@ -18,10 +18,17 @@ struct RootView: View {
     }
 
     @ViewBuilder private var content: some View {
-        if let id = store.selectedWorkspaceID, let workspace = store.workspace(id: id) {
-            WorkspaceView(workspace: workspace)
-                .id(workspace.id)
-        } else {
+        switch store.selection {
+        case .workspace(let id):
+            if let workspace = store.workspace(id: id) {
+                WorkspaceView(workspace: workspace)
+                    .id(workspace.id)
+            } else {
+                welcome
+            }
+        case .usage:
+            UsageView()
+        case nil:
             welcome
         }
     }
