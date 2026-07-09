@@ -6,16 +6,35 @@ struct RootView: View {
 
     var body: some View {
         ZStack {
-            OrkTheme.ink.ignoresSafeArea()
+            ContentBackdrop().ignoresSafeArea()
             HStack(spacing: 0) {
-                SidebarView()
-                    .frame(width: 232)
-                    .background(OrkTheme.well.ignoresSafeArea())
-                Rectangle().fill(OrkTheme.hairline).frame(width: 1).ignoresSafeArea()
+                if !store.sidebarHidden {
+                    SidebarView()
+                        .frame(width: 232)
+                        .background {
+                            ZStack {
+                                GlassBackground()
+                                OrkTheme.well.opacity(0.45)
+                            }
+                            .ignoresSafeArea()
+                        }
+                        .transition(.move(edge: .leading))
+                }
+                // The work surface floats as a stage over the lit backdrop.
                 content
                     .frame(maxWidth: .infinity, maxHeight: .infinity)
+                    .background(OrkTheme.ink)
+                    .clipShape(RoundedRectangle(cornerRadius: 14, style: .continuous))
+                    .overlay(
+                        RoundedRectangle(cornerRadius: 14, style: .continuous)
+                            .strokeBorder(OrkTheme.hairline.opacity(0.9), lineWidth: 1)
+                    )
+                    .shadow(color: .black.opacity(0.38), radius: 22, y: 8)
+                    .padding([.top, .trailing, .bottom], 10)
+                    .padding(.leading, 8)
             }
             .ignoresSafeArea(edges: .top)
+            .animation(OrkMotion.overlay, value: store.sidebarHidden)
             if let focusID = store.focusModeSessionID,
                let session = store.sessions.first(where: { $0.id == focusID }) {
                 FocusModeView(session: session)
@@ -45,16 +64,19 @@ struct RootView: View {
     }
 
     private var welcome: some View {
-        VStack(spacing: 14) {
-            Image(systemName: "square.stack.3d.up")
-                .font(.system(size: 36, weight: .light))
-                .foregroundStyle(OrkTheme.clay)
-            Text("Welcome to ork")
-                .font(.system(size: 22, weight: .semibold, design: .serif))
-                .foregroundStyle(OrkTheme.cream)
-            Text("Add a project and spawn agents, each in its own worktree.")
-                .font(.system(size: 12))
-                .foregroundStyle(OrkTheme.stone)
+        VStack(spacing: 18) {
+            BrandLogo(height: 96)
+                .shadow(color: OrkTheme.clay.opacity(0.35), radius: 26)
+                .riseIn()
+            VStack(spacing: 7) {
+                Text("Welcome to ork")
+                    .font(OrkFont.display(20))
+                    .foregroundStyle(OrkTheme.cream)
+                Text("Add a project and spawn agents, each in its own worktree.")
+                    .font(.system(size: 12))
+                    .foregroundStyle(OrkTheme.stone)
+            }
+            .riseIn(delay: 0.06)
             Button {
                 pickWorkspaceFolder(store: store)
             } label: {
@@ -64,7 +86,29 @@ struct RootView: View {
             .buttonStyle(.borderedProminent)
             .tint(OrkTheme.clay)
             .padding(.top, 4)
+            .riseIn(delay: 0.12)
         }
         .frame(maxWidth: .infinity, maxHeight: .infinity)
+        .onAppear {
+            // Without the sidebar there is no way to add or pick a project.
+            withAnimation(OrkMotion.overlay) { store.sidebarHidden = false }
+        }
+    }
+}
+
+struct SidebarToggleButton: View {
+    @EnvironmentObject private var store: AppStore
+
+    var body: some View {
+        Button {
+            withAnimation(OrkMotion.overlay) { store.sidebarHidden.toggle() }
+        } label: {
+            Image(systemName: "sidebar.left")
+                .font(.system(size: 12.5, weight: .medium))
+                .foregroundStyle(OrkTheme.stone)
+        }
+        .buttonStyle(.pressable)
+        .keyboardShortcut("0", modifiers: .command)
+        .help(store.sidebarHidden ? "Show sidebar (⌘0)" : "Hide sidebar (⌘0)")
     }
 }

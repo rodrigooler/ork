@@ -38,6 +38,9 @@ struct PanelContent: View {
                     .frame(width: 6, height: 6)
                 Text(running == 1 ? "1 session" : "\(running) sessions")
                     .font(.system(size: 12, weight: .semibold))
+                    .monospacedDigit()
+                    .contentTransition(.numericText())
+                    .animation(OrkMotion.state, value: running)
                     .foregroundStyle(OrkTheme.cream)
             }
             Spacer()

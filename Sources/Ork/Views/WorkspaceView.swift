@@ -28,8 +28,10 @@ struct WorkspaceView: View {
             case .terminals:
                 if sessions.isEmpty {
                     emptyState
+                        .background(DotGrid())
                 } else if layout == .grid {
                     grid
+                        .background(DotGrid().opacity(0.55))
                 } else {
                     FlowView(workspace: workspace, sessions: sessions)
                 }
@@ -64,9 +66,10 @@ struct WorkspaceView: View {
 
     private var header: some View {
         HStack(spacing: 12) {
+            SidebarToggleButton()
             HStack(spacing: 7) {
                 Text(workspace.name)
-                    .font(.system(size: 15, weight: .semibold, design: .serif))
+                    .font(OrkFont.display(12.5))
                     .foregroundStyle(OrkTheme.cream)
                     .help(workspace.path)
                 if isGitRepo {
@@ -111,9 +114,10 @@ struct WorkspaceView: View {
             }
             .opacity(pane == .terminals ? 1 : 0)
             .allowsHitTesting(pane == .terminals)
-            .animation(.easeOut(duration: 0.12), value: pane)
+            .animation(OrkMotion.hover, value: pane)
         }
-        .padding(.horizontal, 14)
+        .padding(.leading, store.sidebarHidden ? 74 : 14)
+        .padding(.trailing, 14)
         .padding(.vertical, 7)
     }
 
@@ -129,10 +133,10 @@ struct WorkspaceView: View {
     private var paneSwitcher: some View {
         HStack(spacing: 2) {
             switcherButton(label: "terminals", symbol: "terminal", isOn: pane == .terminals, ns: paneNamespace) {
-                withAnimation(.spring(response: 0.3, dampingFraction: 0.85)) { pane = .terminals }
+                withAnimation(OrkMotion.state) { pane = .terminals }
             }
             switcherButton(label: "data", symbol: "cylinder.split.1x2", isOn: pane == .data, ns: paneNamespace) {
-                withAnimation(.spring(response: 0.3, dampingFraction: 0.85)) { pane = .data }
+                withAnimation(OrkMotion.state) { pane = .data }
             }
         }
         .padding(3)
@@ -144,10 +148,10 @@ struct WorkspaceView: View {
     private var layoutSwitcher: some View {
         HStack(spacing: 2) {
             switcherButton(label: nil, symbol: "square.grid.2x2", isOn: layout == .grid, ns: layoutNamespace) {
-                withAnimation(.spring(response: 0.3, dampingFraction: 0.85)) { layout = .grid }
+                withAnimation(OrkMotion.state) { layout = .grid }
             }
             switcherButton(label: nil, symbol: "point.3.connected.trianglepath.dotted", isOn: layout == .flow, ns: layoutNamespace) {
-                withAnimation(.spring(response: 0.3, dampingFraction: 0.85)) { layout = .flow }
+                withAnimation(OrkMotion.state) { layout = .flow }
             }
         }
         .padding(3)
@@ -209,33 +213,30 @@ struct WorkspaceView: View {
             }
         }
         .padding(14)
-        .animation(.spring(response: 0.35, dampingFraction: 0.85), value: sessions.map(\.id))
+        .animation(OrkMotion.layout, value: sessions.map(\.id))
     }
 
     private var emptyState: some View {
-        VStack(spacing: 14) {
-            Image(systemName: "square.stack.3d.up")
-                .font(.system(size: 32, weight: .light))
-                .foregroundStyle(OrkTheme.faint)
-            Text("No active sessions")
-                .font(.system(size: 17, weight: .semibold, design: .serif))
-                .foregroundStyle(OrkTheme.cream)
-            Text("Spawn an agent to start working on this project.")
-                .font(.system(size: 12))
-                .foregroundStyle(OrkTheme.stone)
-            HStack(spacing: 8) {
-                ForEach(AgentProfile.builtin) { agent in
-                    Button {
+        VStack(spacing: 20) {
+            VStack(spacing: 10) {
+                Image(systemName: "square.stack.3d.up")
+                    .font(.system(size: 30, weight: .light))
+                    .foregroundStyle(OrkTheme.faint)
+                Text("No active sessions")
+                    .font(OrkFont.display(14))
+                    .foregroundStyle(OrkTheme.cream)
+                Text("Spawn an agent to start working on this project.")
+                    .font(.system(size: 12))
+                    .foregroundStyle(OrkTheme.stone)
+            }
+            .riseIn()
+            HStack(spacing: 10) {
+                ForEach(Array(AgentProfile.builtin.enumerated()), id: \.element.id) { index, agent in
+                    AgentTile(agent: agent, delay: 0.05 + Double(index) * 0.04) {
                         spawn(agent)
-                    } label: {
-                        Label(agent.name, systemImage: agent.symbol)
-                            .font(.system(size: 11))
                     }
-                    .buttonStyle(.bordered)
-                    .tint(agent.tint)
                 }
             }
-            .padding(.top, 6)
         }
         .frame(maxWidth: .infinity, maxHeight: .infinity)
     }
@@ -271,5 +272,56 @@ struct Chip: View {
             .background(tint.opacity(0.10))
             .clipShape(Capsule())
             .overlay(Capsule().strokeBorder(tint.opacity(0.25), lineWidth: 1))
+    }
+}
+
+/// Launcher tile for one agent CLI: tinted icon well, name, command hint.
+struct AgentTile: View {
+    let agent: AgentProfile
+    var delay: Double = 0
+    let action: () -> Void
+
+    @State private var hovering = false
+
+    var body: some View {
+        Button(action: action) {
+            VStack(spacing: 9) {
+                Group {
+                    if let icon = OrkMark.agentIcon(slug: agent.slug) {
+                        Image(nsImage: icon)
+                            .resizable()
+                            .interpolation(.high)
+                    } else {
+                        Image(systemName: agent.symbol)
+                            .font(.system(size: 16, weight: .medium))
+                            .foregroundStyle(agent.tint)
+                            .frame(width: 44, height: 44)
+                            .background(agent.tint.opacity(hovering ? 0.2 : 0.12))
+                    }
+                }
+                .frame(width: 44, height: 44)
+                .clipShape(RoundedRectangle(cornerRadius: 12, style: .continuous))
+                VStack(spacing: 2) {
+                    Text(agent.name)
+                        .font(.system(size: 11, weight: .medium))
+                        .foregroundStyle(hovering ? OrkTheme.cream : OrkTheme.stone)
+                    Text(agent.command)
+                        .font(.system(size: 9, design: .monospaced))
+                        .foregroundStyle(OrkTheme.faint)
+                }
+            }
+            .frame(width: 104)
+            .padding(.vertical, 14)
+            .background(OrkTheme.raised.opacity(hovering ? 1 : 0.78))
+            .clipShape(RoundedRectangle(cornerRadius: 14, style: .continuous))
+            .overlay(
+                RoundedRectangle(cornerRadius: 14, style: .continuous)
+                    .strokeBorder(hovering ? agent.tint.opacity(0.5) : OrkTheme.hairline, lineWidth: 1)
+            )
+        }
+        .buttonStyle(.pressable)
+        .onHover { hovering = $0 }
+        .animation(OrkMotion.hover, value: hovering)
+        .riseIn(delay: delay)
     }
 }

@@ -5,14 +5,18 @@ struct UsageView: View {
 
     var body: some View {
         VStack(alignment: .leading, spacing: 16) {
-            VStack(alignment: .leading, spacing: 3) {
-                Text("Usage")
-                    .font(.system(size: 19, weight: .semibold, design: .serif))
-                    .foregroundStyle(OrkTheme.cream)
-                Text("Tokens across your agent CLIs, last 14 days.")
-                    .font(.system(size: 11))
-                    .foregroundStyle(OrkTheme.stone)
+            HStack(alignment: .firstTextBaseline, spacing: 10) {
+                SidebarToggleButton()
+                VStack(alignment: .leading, spacing: 3) {
+                    Text("Usage")
+                        .font(OrkFont.display(15))
+                        .foregroundStyle(OrkTheme.cream)
+                    Text("Tokens across your agent CLIs, last 14 days.")
+                        .font(.system(size: 11))
+                        .foregroundStyle(OrkTheme.stone)
+                }
             }
+            .padding(.leading, store.sidebarHidden ? 58 : 0)
 
             if let usage = store.claudeUsage {
                 agentCard(name: "Claude Code", symbol: "sparkles", tint: OrkTheme.clay, usage: usage)
@@ -57,7 +61,7 @@ struct UsageView: View {
                     .font(.system(size: 11, design: .monospaced))
                     .foregroundStyle(OrkTheme.stone)
             }
-            UsageBars(days: usage.days, tint: tint, height: 76)
+            UsageBars(days: usage.days, tint: tint, height: 76, animated: true)
             HStack {
                 if let first = usage.days.first {
                     Text(first.date.formatted(.dateTime.day().month(.abbreviated)))
@@ -71,9 +75,7 @@ struct UsageView: View {
             }
         }
         .padding(14)
-        .background(OrkTheme.raised)
-        .clipShape(RoundedRectangle(cornerRadius: 10))
-        .overlay(RoundedRectangle(cornerRadius: 10).strokeBorder(OrkTheme.hairline, lineWidth: 1))
+        .orkCard()
         .frame(maxWidth: 640)
     }
 }
@@ -83,6 +85,14 @@ struct UsageBars: View {
     let days: [AgentUsage.Day]
     let tint: Color
     var height: CGFloat = 72
+    /// One-shot grow-from-baseline cascade. Only the full Usage page opts in;
+    /// the glance panels are seen too often to animate.
+    var animated = false
+
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
+    @State private var shown = false
+
+    private var grown: Bool { !animated || shown }
 
     var body: some View {
         let peak = max(days.map(\.tokens).max() ?? 1, 1)
@@ -94,9 +104,13 @@ struct UsageBars: View {
                     .fill(isToday ? tint : tint.opacity(0.4))
                     .frame(height: max(4, height * CGFloat(day.tokens) / CGFloat(peak)))
                     .frame(maxWidth: .infinity)
+                    .scaleEffect(x: 1, y: grown || reduceMotion ? 1 : 0.04, anchor: .bottom)
+                    .opacity(grown ? 1 : 0)
+                    .animation(.smooth(duration: 0.35).delay(Double(index) * 0.015), value: grown)
                     .help("\(day.date.formatted(date: .abbreviated, time: .omitted)): \(TokenFormat.compact(day.tokens)) tokens")
             }
         }
         .frame(height: height, alignment: .bottom)
+        .onAppear { shown = true }
     }
 }

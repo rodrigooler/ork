@@ -35,6 +35,7 @@ struct FlowView: View {
     private var topology: some View {
         ScrollView {
             ZStack(alignment: .topLeading) {
+                DotGrid()
                 Canvas { context, _ in
                     guard !sessions.isEmpty else { return }
                     var trunk = Path()
@@ -77,9 +78,7 @@ struct FlowView: View {
         }
         .padding(.horizontal, 12)
         .frame(width: paneWidth - 28, height: 44)
-        .background(OrkTheme.raised)
-        .clipShape(RoundedRectangle(cornerRadius: 10))
-        .overlay(RoundedRectangle(cornerRadius: 10).strokeBorder(OrkTheme.hairline, lineWidth: 1))
+        .orkCard()
     }
 
     private func sessionNode(_ session: TerminalSession) -> some View {
@@ -117,7 +116,8 @@ struct FlowView: View {
                     .strokeBorder(isFocused ? session.agent.tint.opacity(0.55) : OrkTheme.hairline, lineWidth: 1)
             )
         }
-        .buttonStyle(.plain)
+        .buttonStyle(.pressable)
+        .animation(OrkMotion.hover, value: isFocused)
     }
 
     @ViewBuilder private var detail: some View {

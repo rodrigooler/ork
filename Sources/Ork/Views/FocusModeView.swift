@@ -8,17 +8,22 @@ struct FocusModeView: View {
 
     var body: some View {
         ZStack {
-            OrkTheme.ink.opacity(0.985)
+            // ponytail: in-window blur of the live grid; swap to flat ink if it ever measures hot
+            Rectangle()
+                .fill(.ultraThinMaterial)
+                .overlay(OrkTheme.ink.opacity(0.55))
                 .ignoresSafeArea()
                 .onTapGesture { exitFocus() }
+                .transition(.opacity)
             VStack(spacing: 14) {
                 header
                 terminal
             }
             .padding(28)
+            .transition(.scale(scale: 0.97).combined(with: .opacity))
         }
-        .transition(.opacity.combined(with: .scale(scale: 0.98)))
         .onAppear {
+            store.wake(session.id)
             DispatchQueue.main.asyncAfter(deadline: .now() + 0.08) {
                 TerminalRegistry.shared.focusTerminal(session.id)
             }
@@ -33,7 +38,7 @@ struct FocusModeView: View {
                 active: !session.exited
             )
             Text(session.agent.name)
-                .font(.system(size: 20, weight: .semibold, design: .serif))
+                .font(OrkFont.display(15))
                 .foregroundStyle(OrkTheme.cream)
             if let branch = session.worktreeBranch {
                 Chip(text: branch, tint: session.agent.tint)
@@ -57,7 +62,7 @@ struct FocusModeView: View {
                     .background(OrkTheme.overlay)
                     .clipShape(RoundedRectangle(cornerRadius: 7))
             }
-            .buttonStyle(.plain)
+            .buttonStyle(.pressable)
             .keyboardShortcut("f", modifiers: [.command, .shift])
             .help("Exit focus mode (⌘⇧F)")
         }
@@ -65,17 +70,25 @@ struct FocusModeView: View {
 
     private var terminal: some View {
         TerminalSurface(session: session)
+            .padding(.leading, 12)
+            .padding(.trailing, 6)
+            .padding(.vertical, 10)
+            .background(OrkTheme.well)
             .clipShape(RoundedRectangle(cornerRadius: 14, style: .continuous))
             .overlay(
                 RoundedRectangle(cornerRadius: 14, style: .continuous)
                     .strokeBorder(session.agent.tint.opacity(0.55), lineWidth: 1.5)
             )
-            .shadow(color: session.agent.tint.opacity(0.25), radius: 34)
-            .shadow(color: .black.opacity(0.5), radius: 18, y: 6)
+            .background(
+                RoundedRectangle(cornerRadius: 14, style: .continuous)
+                    .fill(OrkTheme.well)
+                    .shadow(color: session.agent.tint.opacity(0.25), radius: 34)
+                    .shadow(color: .black.opacity(0.5), radius: 18, y: 6)
+            )
     }
 
     private func exitFocus() {
-        withAnimation(.spring(response: 0.3, dampingFraction: 0.85)) {
+        withAnimation(OrkMotion.exit) {
             store.focusModeSessionID = nil
         }
     }

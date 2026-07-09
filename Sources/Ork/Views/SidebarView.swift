@@ -28,12 +28,14 @@ struct SidebarView: View {
                     }
 
                     let ungrouped = store.ungroupedWorkspaces
-                    sectionLabel("Projects", showAdd: true)
+                    if !ungrouped.isEmpty || store.organizations.isEmpty {
+                        sectionLabel("Projects")
+                    }
                     ForEach(ungrouped) { workspaceRow($0) }
                     if store.workspaces.isEmpty {
                         addPlaceholder
                     }
-                    sectionLabel("Tools", showAdd: false)
+                    sectionLabel("Tools")
                         .padding(.top, 10)
                     usageRow
                 }
@@ -101,21 +103,48 @@ struct SidebarView: View {
 
     private var header: some View {
         HStack(spacing: 10) {
-            OrkMarkView(size: 30)
-            VStack(alignment: .leading, spacing: 0) {
-                Text("ork")
-                    .font(.system(size: 21, weight: .semibold, design: .serif))
-                    .foregroundStyle(OrkTheme.cream)
-                Text("agent orchestrator")
-                    .font(.system(size: 9))
-                    .kerning(0.8)
-                    .foregroundStyle(OrkTheme.faint)
-            }
+            BrandLogo(height: 46)
+            Text("agent\norchestrator")
+                .font(OrkFont.display(8, weight: .medium))
+                .kerning(1.1)
+                .lineSpacing(3)
+                .textCase(.uppercase)
+                .foregroundStyle(OrkTheme.stone)
             Spacer()
+            addMenu
         }
-        .padding(.top, 28)
-        .padding(.horizontal, 16)
-        .padding(.bottom, 14)
+        .padding(.top, 30)
+        .padding(.horizontal, 14)
+        .padding(.bottom, 12)
+    }
+
+    /// Global add entry point; also the only one when every project lives
+    /// inside an organization and the Projects section is hidden.
+    private var addMenu: some View {
+        Menu {
+            Button("Add project…") {
+                pickWorkspaceFolder(store: store)
+            }
+            Divider()
+            Button("New organization…") {
+                moveToNewOrgWorkspace = nil
+                newOrgName = ""
+                showNewOrgAlert = true
+            }
+        } label: {
+            Image(systemName: "plus")
+                .font(.system(size: 11, weight: .semibold))
+                .foregroundStyle(OrkTheme.stone)
+                .frame(width: 22, height: 22)
+                .background(OrkTheme.overlay.opacity(0.6))
+                .clipShape(RoundedRectangle(cornerRadius: 6, style: .continuous))
+                .contentShape(Rectangle())
+        }
+        .menuStyle(.button)
+        .buttonStyle(.pressable)
+        .menuIndicator(.hidden)
+        .fixedSize()
+        .help("Add project or organization")
     }
 
     private var divider: some View {
@@ -139,12 +168,13 @@ struct SidebarView: View {
         }.count
         return VStack(alignment: .leading, spacing: 3) {
             HStack(spacing: 7) {
-                Image(systemName: isCollapsed ? "chevron.right" : "chevron.down")
-                    .font(.system(size: 8, weight: .semibold))
+                Image(systemName: "chevron.right")
+                    .font(.system(size: 9, weight: .semibold))
                     .foregroundStyle(OrkTheme.faint)
+                    .rotationEffect(.degrees(isCollapsed ? 0 : 90))
                     .frame(width: 10)
                 Text(org.name.uppercased())
-                    .font(.system(size: 9, weight: .semibold))
+                    .font(OrkFont.display(8, weight: .medium))
                     .kerning(1.2)
                     .foregroundStyle(OrkTheme.stone)
                 if orgRunning > 0 {
@@ -158,14 +188,14 @@ struct SidebarView: View {
                         .font(.system(size: 10, weight: .semibold))
                         .foregroundStyle(OrkTheme.stone)
                 }
-                .buttonStyle(.plain)
+                .buttonStyle(.pressable)
                 .help("Add project to \(org.name)")
             }
             .padding(.horizontal, 8)
             .padding(.vertical, 4)
             .contentShape(Rectangle())
             .onTapGesture {
-                withAnimation(.easeOut(duration: 0.12)) {
+                withAnimation(OrkMotion.state) {
                     if isCollapsed { collapsedOrgs.remove(org.id) }
                     else { collapsedOrgs.insert(org.id) }
                 }
@@ -184,65 +214,36 @@ struct SidebarView: View {
                 ForEach(orgWorkspaces) { workspace in
                     workspaceRow(workspace)
                         .padding(.leading, 10)
+                        .transition(.opacity)
                 }
             }
         }
         .padding(.bottom, 4)
     }
 
-    private func sectionLabel(_ title: String, showAdd: Bool) -> some View {
-        HStack {
-            Text(title.uppercased())
-                .font(.system(size: 9, weight: .semibold))
-                .kerning(1.2)
-                .foregroundStyle(OrkTheme.faint)
-            Spacer()
-            if showAdd {
-                Menu {
-                    Button("Add project…") {
-                        pickWorkspaceFolder(store: store)
-                    }
-                    Divider()
-                    Button("New organization…") {
-                        moveToNewOrgWorkspace = nil
-                        newOrgName = ""
-                        showNewOrgAlert = true
-                    }
-                } label: {
-                    Image(systemName: "plus")
-                        .font(.system(size: 10, weight: .semibold))
-                        .foregroundStyle(OrkTheme.stone)
-                }
-                .menuStyle(.borderlessButton)
-                .frame(width: 16)
-                .help("Add project or organization")
-            }
-        }
-        .padding(.horizontal, 8)
-        .padding(.bottom, 6)
+    private func sectionLabel(_ title: String) -> some View {
+        Text(title.uppercased())
+            .font(OrkFont.display(8, weight: .medium))
+            .kerning(1.2)
+            .foregroundStyle(OrkTheme.faint)
+            .padding(.horizontal, 8)
+            .padding(.bottom, 6)
     }
 
     private func workspaceRow(_ workspace: Workspace) -> some View {
-        let count = store.sessions.filter { $0.workspaceID == workspace.id }.count
-        let hasRunning = store.sessions.contains { $0.workspaceID == workspace.id && !$0.exited }
-        return SidebarRow(
+        SidebarRow(
             symbol: "folder.fill",
             title: workspace.name,
             isSelected: store.selection == .workspace(workspace.id),
             action: { store.selection = .workspace(workspace.id) }
-        ) {
+        ) { hovering in
             HStack(spacing: 5) {
                 if !store.organizations.isEmpty {
+                    // Action reveals on hover; status (dots) stays put.
                     moveMenu(for: workspace)
+                        .opacity(hovering ? 1 : 0)
                 }
-                if hasRunning {
-                    PulsingDot(color: OrkTheme.moss, size: 5)
-                }
-                if count > 0 {
-                    Text("\(count)")
-                        .font(.system(size: 10, weight: .medium, design: .monospaced))
-                        .foregroundStyle(OrkTheme.stone)
-                }
+                sessionDots(for: workspace)
             }
         }
         .contextMenu {
@@ -299,12 +300,35 @@ struct SidebarView: View {
             }
         } label: {
             Image(systemName: "arrow.right")
-                .font(.system(size: 8, weight: .semibold))
+                .font(.system(size: 9, weight: .semibold))
                 .foregroundStyle(OrkTheme.faint)
+                .frame(width: 14, height: 14)
+                .contentShape(Rectangle())
         }
-        .menuStyle(.borderlessButton)
-        .frame(width: 14)
+        .menuStyle(.button)
+        .buttonStyle(.plain)
+        .menuIndicator(.hidden)
+        .fixedSize()
         .help("Move to organization")
+    }
+
+    /// Agent-tinted presence dots, one per session (max 4), dimmed once exited.
+    @ViewBuilder private func sessionDots(for workspace: Workspace) -> some View {
+        let wsSessions = store.sessions.filter { $0.workspaceID == workspace.id }
+        if !wsSessions.isEmpty {
+            HStack(spacing: 3) {
+                ForEach(wsSessions.prefix(4)) { session in
+                    Circle()
+                        .fill(session.agent.tint.opacity(session.exited ? 0.35 : 1))
+                        .frame(width: 4.5, height: 4.5)
+                }
+                if wsSessions.count > 4 {
+                    Text("+\(wsSessions.count - 4)")
+                        .font(.system(size: 9, weight: .medium, design: .monospaced))
+                        .foregroundStyle(OrkTheme.faint)
+                }
+            }
+        }
     }
 
     private var usageRow: some View {
@@ -313,7 +337,7 @@ struct SidebarView: View {
             title: "Usage",
             isSelected: store.selection == .usage,
             action: { store.selection = .usage }
-        ) {
+        ) { _ in
             EmptyView()
         }
     }
@@ -328,9 +352,9 @@ struct SidebarView: View {
                 .frame(maxWidth: .infinity)
                 .padding(.vertical, 9)
                 .background(OrkTheme.raised.opacity(0.6))
-                .clipShape(RoundedRectangle(cornerRadius: 7))
+                .clipShape(RoundedRectangle(cornerRadius: 7, style: .continuous))
         }
-        .buttonStyle(.plain)
+        .buttonStyle(.pressable)
     }
 
     private var footer: some View {
@@ -339,6 +363,8 @@ struct SidebarView: View {
                 PulsingDot(color: OrkTheme.moss, size: 5)
                 Text(runningCount == 1 ? "1 agent at work" : "\(runningCount) agents at work")
                     .font(.system(size: 10))
+                    .monospacedDigit()
+                    .contentTransition(.numericText())
                     .foregroundStyle(OrkTheme.stone)
             } else {
                 Circle().fill(OrkTheme.faint).frame(width: 5, height: 5)
@@ -352,6 +378,7 @@ struct SidebarView: View {
                 .foregroundStyle(OrkTheme.faint)
         }
         .padding(14)
+        .animation(OrkMotion.state, value: runningCount)
     }
 }
 
@@ -360,7 +387,7 @@ struct SidebarRow<Trailing: View>: View {
     let title: String
     let isSelected: Bool
     let action: () -> Void
-    let trailing: Trailing
+    let trailing: (Bool) -> Trailing
 
     @State private var hovering = false
 
@@ -369,13 +396,13 @@ struct SidebarRow<Trailing: View>: View {
         title: String,
         isSelected: Bool,
         action: @escaping () -> Void,
-        @ViewBuilder trailing: () -> Trailing
+        @ViewBuilder trailing: @escaping (Bool) -> Trailing
     ) {
         self.symbol = symbol
         self.title = title
         self.isSelected = isSelected
         self.action = action
-        self.trailing = trailing()
+        self.trailing = trailing
     }
 
     var body: some View {
@@ -385,7 +412,7 @@ struct SidebarRow<Trailing: View>: View {
                     RoundedRectangle(cornerRadius: 6)
                         .fill(isSelected ? OrkTheme.clay.opacity(0.16) : OrkTheme.overlay.opacity(hovering ? 0.9 : 0.55))
                     Image(systemName: symbol)
-                        .font(.system(size: 10))
+                        .font(.system(size: 11, weight: .medium))
                         .foregroundStyle(isSelected ? OrkTheme.clay : OrkTheme.stone)
                 }
                 .frame(width: 24, height: 24)
@@ -394,7 +421,7 @@ struct SidebarRow<Trailing: View>: View {
                     .foregroundStyle(isSelected || hovering ? OrkTheme.cream : OrkTheme.stone)
                     .lineLimit(1)
                 Spacer(minLength: 4)
-                trailing
+                trailing(hovering)
             }
             .padding(.horizontal, 8)
             .padding(.vertical, 6)
@@ -402,6 +429,8 @@ struct SidebarRow<Trailing: View>: View {
                 RoundedRectangle(cornerRadius: 8)
                     .fill(isSelected ? OrkTheme.overlay : (hovering ? OrkTheme.overlay.opacity(0.45) : .clear))
             )
+            // Whole row is a hit target, not just the pixels with text.
+            .contentShape(RoundedRectangle(cornerRadius: 8))
             .overlay(alignment: .leading) {
                 if isSelected {
                     Capsule()
@@ -413,8 +442,8 @@ struct SidebarRow<Trailing: View>: View {
         }
         .buttonStyle(.plain)
         .onHover { hovering = $0 }
-        .animation(.easeOut(duration: 0.12), value: hovering)
-        .animation(.easeOut(duration: 0.15), value: isSelected)
+        .animation(OrkMotion.hover, value: hovering)
+        .animation(OrkMotion.hover, value: isSelected)
     }
 }
 

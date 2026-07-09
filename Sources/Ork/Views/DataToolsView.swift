@@ -28,6 +28,7 @@ struct DataPane: View {
                         ForEach(connections) { connectionCard($0) }
                     }
                 }
+                .animation(OrkMotion.layout, value: connections.map(\.id))
             }
             Spacer(minLength: 0)
         }
@@ -55,9 +56,7 @@ struct DataPane: View {
             .tint(OrkTheme.clay)
         }
         .padding(10)
-        .background(OrkTheme.raised)
-        .clipShape(RoundedRectangle(cornerRadius: 10))
-        .overlay(RoundedRectangle(cornerRadius: 10).strokeBorder(OrkTheme.hairline, lineWidth: 1))
+        .orkCard()
         .onChange(of: kind) { _, newKind in
             port = String(newKind.defaultPort)
         }
@@ -108,12 +107,11 @@ struct DataPane: View {
                     .font(.system(size: 10))
                     .foregroundStyle(OrkTheme.stone)
             }
-            .buttonStyle(.plain)
+            .buttonStyle(.pressable)
         }
         .padding(12)
-        .background(OrkTheme.raised)
-        .clipShape(RoundedRectangle(cornerRadius: 10))
-        .overlay(RoundedRectangle(cornerRadius: 10).strokeBorder(OrkTheme.hairline, lineWidth: 1))
+        .orkCard()
+        .transition(.scale(scale: 0.97).combined(with: .opacity))
     }
 
     @ViewBuilder private func statusBadge(for connection: DBConnection) -> some View {
@@ -144,7 +142,7 @@ struct DataPane: View {
                 .font(.system(size: 28, weight: .light))
                 .foregroundStyle(OrkTheme.faint)
             Text("No endpoints for this project")
-                .font(.system(size: 15, weight: .semibold, design: .serif))
+                .font(OrkFont.display(12.5))
                 .foregroundStyle(OrkTheme.cream)
             Text("Add the Postgres or Redis this project talks to. Query consoles land in a next release.")
                 .font(.system(size: 11))

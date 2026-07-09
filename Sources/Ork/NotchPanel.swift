@@ -139,6 +139,11 @@ struct NotchOverlay: View {
         .frame(width: 660, alignment: .top)
         .background(Color.black)
         .clipShape(UnevenRoundedRectangle(cornerRadii: .init(bottomLeading: 24, bottomTrailing: 24)))
+        .overlay(
+            // Light catching the glass edge: reads as material, costs one stroke.
+            UnevenRoundedRectangle(cornerRadii: .init(bottomLeading: 24, bottomTrailing: 24))
+                .strokeBorder(Color.white.opacity(0.08), lineWidth: 1)
+        )
         .shadow(color: .black.opacity(0.55), radius: 26, y: 10)
         .contentShape(Rectangle())
         .transition(.move(edge: .top).combined(with: .opacity))
@@ -146,11 +151,11 @@ struct NotchOverlay: View {
 
     private func expand() {
         NotchPanelController.shared.setExpanded(true)
-        withAnimation(.spring(response: 0.28, dampingFraction: 0.85)) { isExpanded = true }
+        withAnimation(OrkMotion.overlay) { isExpanded = true }
     }
 
     private func collapse() {
-        withAnimation(.easeOut(duration: 0.14)) { isExpanded = false }
+        withAnimation(OrkMotion.exit) { isExpanded = false }
         NotchPanelController.shared.scheduleCollapse()
     }
 }
