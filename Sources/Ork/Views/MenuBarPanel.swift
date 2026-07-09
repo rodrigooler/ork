@@ -1,7 +1,9 @@
 import SwiftUI
 
-/// Dropdown behind the menu bar icon: what ork is running right now.
-/// Uses system colors because it sits on the system menu material.
+/// Dropdown behind the menu bar icon, AgentPeek style: window stats up top,
+/// per-agent usage with an inline chart, then the live sessions.
+/// Shows token volume for the 5h/7d windows; plan rate-limit percentages are
+/// only visible to the agent CLIs themselves, so ork does not guess them.
 struct MenuBarPanel: View {
     @EnvironmentObject private var store: AppStore
     @Environment(\.openWindow) private var openWindow
@@ -11,67 +13,95 @@ struct MenuBarPanel: View {
     }
 
     var body: some View {
-        VStack(alignment: .leading, spacing: 10) {
-            HStack {
-                Text("ork")
-                    .font(.system(size: 15, weight: .semibold, design: .serif))
-                Spacer()
-                HStack(spacing: 5) {
-                    Circle()
-                        .fill(running > 0 ? Color(hex: 0x97B380) : Color.secondary.opacity(0.4))
-                        .frame(width: 6, height: 6)
-                    Text(running == 1 ? "1 agent running" : "\(running) agents running")
-                        .font(.system(size: 11))
-                        .foregroundStyle(.secondary)
-                }
+        VStack(alignment: .leading, spacing: 12) {
+            header
+            divider
+            usageSection
+            divider
+            sessionsSection
+            divider
+            footer
+        }
+        .padding(14)
+        .frame(width: 340)
+        .background(OrkTheme.ink)
+        .preferredColorScheme(.dark)
+        .task { store.loadUsageIfNeeded() }
+    }
+
+    private var divider: some View {
+        Rectangle().fill(OrkTheme.hairline).frame(height: 1)
+    }
+
+    private var header: some View {
+        HStack {
+            HStack(spacing: 6) {
+                Circle()
+                    .fill(running > 0 ? OrkTheme.moss : OrkTheme.faint)
+                    .frame(width: 6, height: 6)
+                Text(running == 1 ? "1 session" : "\(running) sessions")
+                    .font(.system(size: 12, weight: .semibold))
+                    .foregroundStyle(OrkTheme.cream)
             }
-
-            Divider()
-
-            if store.sessions.isEmpty {
-                Text("No active sessions.")
-                    .font(.system(size: 11))
-                    .foregroundStyle(.secondary)
-            } else {
-                ForEach(store.sessions) { row($0) }
-            }
-
+            Spacer()
             if let usage = store.claudeUsage {
-                Divider()
-                HStack {
-                    Text("Claude Code today")
-                        .font(.system(size: 10))
-                        .foregroundStyle(.secondary)
-                    Spacer()
-                    Text("\(TokenFormat.compact(usage.today)) tokens")
-                        .font(.system(size: 11, design: .monospaced))
-                }
-            }
-
-            Divider()
-
-            HStack {
-                Button("Open ork") {
-                    openWindow(id: "main")
-                    NSApp.activate(ignoringOtherApps: true)
-                }
-                .controlSize(.small)
-                Spacer()
-                Button("Quit") {
-                    NSApp.terminate(nil)
-                }
-                .controlSize(.small)
+                Text("5H \(TokenFormat.compact(usage.last5h)) · 7D \(TokenFormat.compact(usage.last7d))")
+                    .font(.system(size: 10, design: .monospaced))
+                    .foregroundStyle(OrkTheme.stone)
             }
         }
-        .padding(12)
-        .frame(width: 300)
-        .task { store.loadUsageIfNeeded() }
+    }
+
+    @ViewBuilder private var usageSection: some View {
+        if let usage = store.claudeUsage {
+            VStack(alignment: .leading, spacing: 7) {
+                HStack(alignment: .firstTextBaseline, spacing: 6) {
+                    Image(systemName: "sparkles")
+                        .font(.system(size: 10))
+                        .foregroundStyle(OrkTheme.clay)
+                    Text("Claude Code")
+                        .font(.system(size: 12, weight: .semibold))
+                        .foregroundStyle(OrkTheme.cream)
+                    Text("\(TokenFormat.compact(usage.total)) · 14d")
+                        .font(.system(size: 10, design: .monospaced))
+                        .foregroundStyle(OrkTheme.stone)
+                    Spacer()
+                    Text("today \(TokenFormat.compact(usage.today))")
+                        .font(.system(size: 10, design: .monospaced))
+                        .foregroundStyle(OrkTheme.stone)
+                }
+                UsageBars(days: usage.days, tint: OrkTheme.clay, height: 34)
+            }
+        } else if store.usageScanned {
+            Text("No Claude Code usage found.")
+                .font(.system(size: 11))
+                .foregroundStyle(OrkTheme.stone)
+        } else {
+            HStack(spacing: 8) {
+                ProgressView().controlSize(.small)
+                Text("Scanning usage…")
+                    .font(.system(size: 11))
+                    .foregroundStyle(OrkTheme.stone)
+            }
+        }
+    }
+
+    @ViewBuilder private var sessionsSection: some View {
+        if store.sessions.isEmpty {
+            Text("No active sessions.")
+                .font(.system(size: 11))
+                .foregroundStyle(OrkTheme.stone)
+        } else {
+            VStack(alignment: .leading, spacing: 8) {
+                ForEach(store.sessions) { row($0) }
+            }
+        }
     }
 
     private func row(_ session: TerminalSession) -> some View {
         HStack(spacing: 8) {
             Circle()
-                .fill(session.exited ? Color(hex: 0xC96A5F) : Color(hex: 0x97B380))
+                .fill(session.exited ? OrkTheme.brick : OrkTheme.moss)
                 .frame(width: 5, height: 5)
             Image(systemName: session.agent.symbol)
                 .font(.system(size: 10))
@@ -79,9 +109,10 @@ struct MenuBarPanel: View {
             VStack(alignment: .leading, spacing: 1) {
                 Text(session.agent.name)
                     .font(.system(size: 11, weight: .medium))
+                    .foregroundStyle(OrkTheme.cream)
                 Text(context(session))
                     .font(.system(size: 9, design: .monospaced))
-                    .foregroundStyle(.secondary)
+                    .foregroundStyle(OrkTheme.stone)
                     .lineLimit(1)
             }
             Spacer()
@@ -94,5 +125,20 @@ struct MenuBarPanel: View {
             return "\(name) · \(branch)"
         }
         return name
+    }
+
+    private var footer: some View {
+        HStack {
+            Button("Open ork") {
+                openWindow(id: "main")
+                NSApp.activate(ignoringOtherApps: true)
+            }
+            .controlSize(.small)
+            Spacer()
+            Button("Quit") {
+                NSApp.terminate(nil)
+            }
+            .controlSize(.small)
+        }
     }
 }

@@ -7,6 +7,8 @@ struct AgentUsage {
     }
 
     var days: [Day] = []  // oldest first, one entry per day
+    var last5h = 0        // rolling window, real timestamps
+    var last7d = 0
 
     var total: Int { days.reduce(0) { $0 + $1.tokens } }
     var today: Int { days.last?.tokens ?? 0 }
@@ -66,6 +68,11 @@ enum UsageService {
         var buckets: [Date: Int] = [:]
         var seen = Set<String>()
         var foundAny = false
+        let now = Date()
+        let fiveHoursAgo = now.addingTimeInterval(-5 * 3600)
+        let sevenDaysAgo = now.addingTimeInterval(-7 * 86400)
+        var last5h = 0
+        var last7d = 0
 
         for case let url as URL in enumerator {
             guard url.pathExtension == "jsonl" else { continue }
@@ -86,6 +93,8 @@ enum UsageService {
                 let day = calendar.startOfDay(for: date)
                 guard day >= cutoff else { continue }
                 buckets[day, default: 0] += usage.total
+                if date >= fiveHoursAgo { last5h += usage.total }
+                if date >= sevenDaysAgo { last7d += usage.total }
             }
         }
         guard foundAny else { return nil }
@@ -95,6 +104,6 @@ enum UsageService {
             guard let day = calendar.date(byAdding: .day, value: -offset, to: todayStart) else { continue }
             days.append(.init(date: day, tokens: buckets[day] ?? 0))
         }
-        return AgentUsage(days: days)
+        return AgentUsage(days: days, last5h: last5h, last7d: last7d)
     }
 }

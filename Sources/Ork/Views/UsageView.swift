@@ -41,8 +41,7 @@ struct UsageView: View {
     }
 
     private func agentCard(name: String, symbol: String, tint: Color, usage: AgentUsage) -> some View {
-        let peak = max(usage.days.map(\.tokens).max() ?? 1, 1)
-        return VStack(alignment: .leading, spacing: 12) {
+        VStack(alignment: .leading, spacing: 12) {
             HStack(spacing: 10) {
                 Image(systemName: symbol)
                     .font(.system(size: 13))
@@ -58,18 +57,7 @@ struct UsageView: View {
                     .font(.system(size: 11, design: .monospaced))
                     .foregroundStyle(OrkTheme.stone)
             }
-            HStack(alignment: .bottom, spacing: 5) {
-                ForEach(usage.days.indices, id: \.self) { index in
-                    let day = usage.days[index]
-                    let isToday = index == usage.days.count - 1
-                    Capsule()
-                        .fill(isToday ? tint : tint.opacity(0.4))
-                        .frame(height: max(5, 72 * CGFloat(day.tokens) / CGFloat(peak)))
-                        .frame(maxWidth: .infinity)
-                        .help("\(day.date.formatted(date: .abbreviated, time: .omitted)): \(TokenFormat.compact(day.tokens)) tokens")
-                }
-            }
-            .frame(height: 76, alignment: .bottom)
+            UsageBars(days: usage.days, tint: tint, height: 76)
             HStack {
                 if let first = usage.days.first {
                     Text(first.date.formatted(.dateTime.day().month(.abbreviated)))
@@ -77,7 +65,7 @@ struct UsageView: View {
                         .foregroundStyle(OrkTheme.faint)
                 }
                 Spacer()
-                Text("today \(TokenFormat.compact(usage.today))")
+                Text("5h \(TokenFormat.compact(usage.last5h)) · 7d \(TokenFormat.compact(usage.last7d)) · today \(TokenFormat.compact(usage.today))")
                     .font(.system(size: 10, design: .monospaced))
                     .foregroundStyle(OrkTheme.stone)
             }
@@ -87,5 +75,28 @@ struct UsageView: View {
         .clipShape(RoundedRectangle(cornerRadius: 10))
         .overlay(RoundedRectangle(cornerRadius: 10).strokeBorder(OrkTheme.hairline, lineWidth: 1))
         .frame(maxWidth: 640)
+    }
+}
+
+/// One bar per day, today highlighted. Shared between the Usage view and the menu bar panel.
+struct UsageBars: View {
+    let days: [AgentUsage.Day]
+    let tint: Color
+    var height: CGFloat = 72
+
+    var body: some View {
+        let peak = max(days.map(\.tokens).max() ?? 1, 1)
+        HStack(alignment: .bottom, spacing: 4) {
+            ForEach(days.indices, id: \.self) { index in
+                let day = days[index]
+                let isToday = index == days.count - 1
+                Capsule()
+                    .fill(isToday ? tint : tint.opacity(0.4))
+                    .frame(height: max(4, height * CGFloat(day.tokens) / CGFloat(peak)))
+                    .frame(maxWidth: .infinity)
+                    .help("\(day.date.formatted(date: .abbreviated, time: .omitted)): \(TokenFormat.compact(day.tokens)) tokens")
+            }
+        }
+        .frame(height: height, alignment: .bottom)
     }
 }
