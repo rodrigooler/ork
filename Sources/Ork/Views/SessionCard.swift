@@ -14,7 +14,11 @@ struct SessionCard: View {
             header
             Rectangle().fill(OrkTheme.hairline).frame(height: 1)
             ZStack {
-                TerminalSurface(session: session)
+                if store.focusModeSessionID == session.id {
+                    inFocusPlaceholder
+                } else {
+                    TerminalSurface(session: session)
+                }
                 if session.exited {
                     exitedOverlay
                 }
@@ -35,9 +39,11 @@ struct SessionCard: View {
 
     private var header: some View {
         HStack(spacing: 8) {
-            Circle()
-                .fill(session.exited ? OrkTheme.brick : OrkTheme.moss)
-                .frame(width: 6, height: 6)
+            if session.exited {
+                Circle().fill(OrkTheme.brick).frame(width: 6, height: 6)
+            } else {
+                PulsingDot(color: OrkTheme.moss, size: 6)
+            }
             Image(systemName: session.agent.symbol)
                 .font(.system(size: 11))
                 .foregroundStyle(session.agent.tint)
@@ -57,6 +63,17 @@ struct SessionCard: View {
                     .foregroundStyle(session.agent.tint)
             }
             Button {
+                withAnimation(.spring(response: 0.35, dampingFraction: 0.85)) {
+                    store.focusModeSessionID = session.id
+                }
+            } label: {
+                Image(systemName: "arrow.up.left.and.arrow.down.right")
+                    .font(.system(size: 9, weight: .semibold))
+                    .foregroundStyle(OrkTheme.stone)
+            }
+            .buttonStyle(.plain)
+            .help("Focus mode: isolate this terminal")
+            Button {
                 store.closeSession(session.id)
             } label: {
                 Image(systemName: "xmark")
@@ -69,6 +86,20 @@ struct SessionCard: View {
         .padding(.horizontal, 10)
         .padding(.vertical, 7)
         .background(OrkTheme.raised)
+    }
+
+    private var inFocusPlaceholder: some View {
+        ZStack {
+            OrkTheme.well
+            VStack(spacing: 8) {
+                Image(systemName: "scope")
+                    .font(.system(size: 18))
+                    .foregroundStyle(session.agent.tint.opacity(0.8))
+                Text("In focus mode")
+                    .font(.system(size: 11))
+                    .foregroundStyle(OrkTheme.stone)
+            }
+        }
     }
 
     private var exitedOverlay: some View {

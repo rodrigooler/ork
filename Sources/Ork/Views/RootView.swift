@@ -15,6 +15,11 @@ struct RootView: View {
                 content
                     .frame(maxWidth: .infinity, maxHeight: .infinity)
             }
+            if let focusID = store.focusModeSessionID,
+               let session = store.sessions.first(where: { $0.id == focusID }) {
+                FocusModeView(session: session)
+                    .zIndex(10)
+            }
         }
         .onAppear {
             store.openMainWindow = { openWindow(id: "main") }

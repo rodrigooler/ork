@@ -11,6 +11,7 @@ final class AppStore: ObservableObject {
     @Published var sessions: [TerminalSession] = []
     @Published var selection: SidebarSelection?
     @Published var focusedSessionID: UUID?
+    @Published var focusModeSessionID: UUID?
     @Published var claudeUsage: AgentUsage?
     @Published var usageScanned = false
 
@@ -88,6 +89,9 @@ final class AppStore: ObservableObject {
         if selection == .workspace(workspace.id) {
             selection = workspaces.first.map { .workspace($0.id) }
         }
+        if let focus = focusModeSessionID, !sessions.contains(where: { $0.id == focus }) {
+            focusModeSessionID = nil
+        }
         save()
     }
 
@@ -121,6 +125,7 @@ final class AppStore: ObservableObject {
         TerminalRegistry.shared.close(id)
         sessions.removeAll { $0.id == id }
         if focusedSessionID == id { focusedSessionID = nil }
+        if focusModeSessionID == id { focusModeSessionID = nil }
     }
 
     func markExited(_ id: UUID) {

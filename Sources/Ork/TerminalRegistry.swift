@@ -70,6 +70,12 @@ final class TerminalRegistry: NSObject {
 
     // MARK: - Focus tracking
 
+    /// Hands keyboard focus to a session's terminal (used when entering focus mode).
+    func focusTerminal(_ id: UUID) {
+        guard let view = views[id] else { return }
+        view.window?.makeFirstResponder(view)
+    }
+
     func observeWindowIfNeeded(_ window: NSWindow?) {
         guard let window else { return }
         let key = ObjectIdentifier(window)
