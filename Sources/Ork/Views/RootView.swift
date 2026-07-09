@@ -15,6 +15,7 @@ struct RootView: View {
                 content
                     .frame(maxWidth: .infinity, maxHeight: .infinity)
             }
+            .ignoresSafeArea(edges: .top)
             if let focusID = store.focusModeSessionID,
                let session = store.sessions.first(where: { $0.id == focusID }) {
                 FocusModeView(session: session)
