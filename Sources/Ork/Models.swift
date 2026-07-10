@@ -20,6 +20,7 @@ struct AgentProfile: Identifiable, Codable, Hashable {
         switch slug {
         case "claude": return "(claude --continue || claude)"
         case "opencode": return "(opencode --continue || opencode)"
+        case "grok": return "(grok --continue || grok)"
         default: return nil
         }
     }
@@ -29,6 +30,7 @@ struct AgentProfile: Identifiable, Codable, Hashable {
         AgentProfile(slug: "codex", name: "Codex", command: "codex", symbol: "cpu", tintHex: 0x97B380),
         AgentProfile(slug: "opencode", name: "OpenCode", command: "opencode", symbol: "chevron.left.forwardslash.chevron.right", tintHex: 0x7FA3C4),
         AgentProfile(slug: "gemini", name: "Gemini CLI", command: "gemini", symbol: "diamond", tintHex: 0xA08FC9),
+        AgentProfile(slug: "grok", name: "Grok CLI", command: "grok", symbol: "atom", tintHex: 0xC5CBD3),
         AgentProfile(slug: "shell", name: "Shell", command: "exec zsh", symbol: "terminal", tintHex: 0xC7A566),
     ]
 

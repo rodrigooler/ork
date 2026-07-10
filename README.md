@@ -4,8 +4,8 @@
 
 **A native macOS deck for orchestrating AI coding agents.**
 
-Claude Code, Codex, OpenCode, Gemini CLI: every agent in its own terminal,
-every terminal in its own git worktree, all in one window.
+Claude Code, Codex, OpenCode, Gemini CLI, Grok: every agent in its own
+terminal, every terminal in its own git worktree, all in one window.
 
 [![Swift](https://img.shields.io/badge/Swift-5.9+-F05138?logo=swift&logoColor=white)](https://swift.org)
 [![Platform](https://img.shields.io/badge/macOS-14+-000000?logo=apple&logoColor=white)](#install)
@@ -21,7 +21,7 @@ Terminal agents multiplied, and running four of them across ad hoc terminal tabs
 ## Features
 
 - **Workspaces and organizations**: register project folders and group them by company or context; each workspace runs its own agent fleet.
-- **Agent sessions**: spawn Claude Code, Codex, OpenCode, Gemini CLI or a plain shell in one click; add your own agents via `agents.json`.
+- **Agent sessions**: spawn Claude Code, Codex, OpenCode, Gemini CLI, Grok or a plain shell in one click; add your own agents via `agents.json`.
 - **Agent teams**: join terminals into a team; Ork routes terminal-to-terminal messages, a shared `board.md` holds common context, and a team pane shows members, board and message log. Message shapes, a char cap and per-recipient batching keep the token spend low.
 - **Worktree isolation**: each session runs on its own branch in a dedicated worktree, created with plain `git worktree add`.
 - **Git pane**: commit graph, worktree strip and diff viewer; merge a worktree into its base branch or prune it without leaving the app. Session cards show uncommitted diff stats and commits ahead.
@@ -67,6 +67,7 @@ Sessions run inside a zsh login shell, so any agent CLI on your shell profile `P
 | Codex | `codex` | green |
 | OpenCode | `opencode` | cyan |
 | Gemini CLI | `gemini` | blue |
+| Grok CLI | `grok` | silver |
 | Shell | `zsh` | amber |
 
 Custom agents live in `~/Library/Application Support/Ork/agents.json`, one entry per agent with `slug`, `name` and `command`, plus optional `symbol` (SF Symbol), `tint` (`#RRGGBB`) and `resumeCommand`. Edit and reload from Settings.
