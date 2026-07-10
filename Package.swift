@@ -15,6 +15,11 @@ let package = Package(
             ],
             path: "Sources/Ork",
             resources: [.process("Resources")]
+        ),
+        .testTarget(
+            name: "OrkTests",
+            dependencies: ["Ork"],
+            path: "Tests/OrkTests"
         )
     ]
 )

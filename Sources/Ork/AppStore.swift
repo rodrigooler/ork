@@ -27,6 +27,11 @@ final class AppStore: ObservableObject {
     private var freezeTimer: Timer?
     private var cpuSamples: [UUID: (cpu: Double, idlePolls: Int)] = [:]
 
+    /// Per-session git diff stats shown on the card, refreshed by pollStats().
+    @Published private(set) var sessionStats: [UUID: GitService.Stats] = [:]
+    private var statsTimer: Timer?
+    private var statsPollInFlight = false
+
     /// Below this share of one core, a CLI is repainting its TUI, not working.
     private static let idleCPUFraction = 0.06
     private static let freezePollInterval: TimeInterval = 30
@@ -82,6 +87,10 @@ final class AppStore: ObservableObject {
         freezeTimer = Timer.scheduledTimer(withTimeInterval: Self.freezePollInterval, repeats: true) { [weak self] _ in
             self?.pollFreeze()
         }
+        statsTimer = Timer.scheduledTimer(withTimeInterval: 10, repeats: true) { [weak self] _ in
+            self?.pollStats()
+        }
+        pollStats()
     }
 
     private func save() {
@@ -285,6 +294,40 @@ final class AppStore: ObservableObject {
         TerminalRegistry.shared.thaw(id)
         frozenSessionIDs.remove(id)
         cpuSamples[id] = nil
+    }
+
+    // MARK: - Git stats (card chips)
+
+    private func pollStats() {
+        guard !statsPollInFlight else { return }
+        let targets = sessions.compactMap { session -> (id: UUID, dir: String, repo: String)? in
+            guard !session.exited, session.worktreeBranch != nil,
+                  let ws = workspace(id: session.workspaceID) else { return nil }
+            return (session.id, session.directory, ws.path)
+        }
+        guard !targets.isEmpty else {
+            if !sessionStats.isEmpty { sessionStats = [:] }
+            return
+        }
+        statsPollInFlight = true
+        Task.detached(priority: .utility) { [weak self] in
+            var fresh: [UUID: GitService.Stats] = [:]
+            var baseCache: [String: String?] = [:]
+            for target in targets {
+                let base: String?
+                if let cached = baseCache[target.repo] {
+                    base = cached
+                } else {
+                    base = GitService.defaultBranch(repo: target.repo)
+                    baseCache[target.repo] = base
+                }
+                fresh[target.id] = GitService.stats(worktree: target.dir, baseBranch: base)
+            }
+            DispatchQueue.main.async {
+                self?.sessionStats = fresh
+                self?.statsPollInFlight = false
+            }
+        }
     }
 
     // MARK: - Connections (scoped per workspace)

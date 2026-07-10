@@ -87,6 +87,23 @@ struct SessionCard: View {
         .transition(.opacity)
     }
 
+    /// Uncommitted diff and commits ahead of base, from AppStore's 10 s poll.
+    @ViewBuilder private var statsChips: some View {
+        if let stats = store.sessionStats[session.id] {
+            HStack(spacing: 4) {
+                if !stats.isClean {
+                    Text("+\(stats.insertions)").foregroundStyle(OrkTheme.moss)
+                    Text("−\(stats.deletions)").foregroundStyle(OrkTheme.brick)
+                }
+                if stats.ahead > 0 {
+                    Text("↑\(stats.ahead)").foregroundStyle(OrkTheme.clay)
+                }
+            }
+            .font(.system(size: 9, design: .monospaced))
+            .help("Uncommitted: +\(stats.insertions) −\(stats.deletions), \(stats.newFiles) new files · \(stats.ahead) commits ahead of base")
+        }
+    }
+
     private var header: some View {
         HStack(spacing: 8) {
             if session.exited {
@@ -105,6 +122,8 @@ struct SessionCard: View {
                 .foregroundStyle(OrkTheme.faint)
             if let branch = session.worktreeBranch {
                 Chip(text: branch, tint: session.agent.tint)
+                    .help("Worktree: \(session.directory)")
+                statsChips
             }
             Spacer()
             if isFocused {
