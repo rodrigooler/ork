@@ -10,6 +10,7 @@ Priorities for ork, in order. Items move up or down based on real usage; open an
 ## Shipped since 0.5.0
 
 - Team message box: talk to the agent team from the team pane as 'user'.
+- Rename agents: give a terminal a human name from the context menu; teams address it by that name.
 - Near-zero idle work: git stat polling pauses while the window is hidden and skips frozen or hibernated sessions; pane refresh loops pause when occluded.
 
 ## Later
