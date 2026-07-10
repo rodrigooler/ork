@@ -22,6 +22,9 @@ struct SessionCard: View {
             ZStack {
                 if store.focusModeSessionID == session.id {
                     inFocusPlaceholder
+                } else if session.hibernated {
+                    // Mounting the surface would relaunch the process; stay empty.
+                    Color.clear
                 } else {
                     TerminalSurface(session: session)
                         .padding(.leading, 10)
@@ -30,6 +33,8 @@ struct SessionCard: View {
                 }
                 if session.exited {
                     exitedOverlay
+                } else if session.hibernated {
+                    hibernatedOverlay
                 } else if isFrozen {
                     frozenOverlay
                 }
@@ -62,6 +67,29 @@ struct SessionCard: View {
         .animation(OrkMotion.hover, value: isFocused)
         .animation(OrkMotion.layout, value: session.exited)
         .animation(OrkMotion.state, value: isFrozen)
+        .animation(OrkMotion.state, value: session.hibernated)
+    }
+
+    /// Process killed to give the memory back; the conversation resumes on click.
+    private var hibernatedOverlay: some View {
+        ZStack {
+            OrkTheme.ink.opacity(0.72)
+            HStack(spacing: 6) {
+                Image(systemName: "moon.zzz")
+                    .font(.system(size: 10, weight: .medium))
+                Text("Hibernated · click to resume")
+                    .font(.system(size: 10.5, weight: .medium))
+            }
+            .foregroundStyle(OrkTheme.cream)
+            .padding(.horizontal, 11)
+            .padding(.vertical, 6)
+            .background(.ultraThinMaterial, in: Capsule())
+        }
+        .contentShape(Rectangle())
+        .onTapGesture {
+            withAnimation(OrkMotion.state) { store.resumeHibernated(session.id) }
+        }
+        .transition(.opacity)
     }
 
     /// Idle session parked with SIGSTOP: content stays readable behind a
@@ -109,7 +137,11 @@ struct SessionCard: View {
             if session.exited {
                 Circle().fill(OrkTheme.brick).frame(width: 6, height: 6)
             } else {
-                PulsingDot(color: isFrozen ? OrkTheme.faint : OrkTheme.moss, size: 6, active: !isFrozen)
+                PulsingDot(
+                    color: isFrozen || session.hibernated ? OrkTheme.faint : OrkTheme.moss,
+                    size: 6,
+                    active: !isFrozen && !session.hibernated
+                )
             }
             Image(systemName: session.agent.symbol)
                 .font(.system(size: 11))
@@ -132,6 +164,7 @@ struct SessionCard: View {
                     .foregroundStyle(session.agent.tint)
             }
             Button {
+                if session.hibernated { store.resumeHibernated(session.id) }
                 withAnimation(OrkMotion.overlay) {
                     store.focusModeSessionID = session.id
                 }
@@ -232,7 +265,10 @@ struct TerminalSurface: NSViewRepresentable {
             onExit: { store.markExited(id) },
             onFocus: { focused in store.setFocus(id, focused: focused) }
         )
-        return TerminalDropContainer(terminal: terminal)
+        let container = TerminalDropContainer(terminal: terminal)
+        container.onSleep = { store.sleepSession(id) }
+        container.onHibernate = { store.hibernate(id) }
+        return container
     }
 
     func updateNSView(_ nsView: TerminalDropContainer, context: Context) {

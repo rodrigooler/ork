@@ -24,6 +24,8 @@ final class AppStore: ObservableObject {
 
     /// Sessions parked with SIGSTOP after sustained idle CPU; see pollFreeze().
     @Published private(set) var frozenSessionIDs: Set<UUID> = []
+    /// Slept by the user, not the idle poll: survives freezeEnabled being off.
+    private var manualSleepIDs: Set<UUID> = []
     private var freezeTimer: Timer?
     private var cpuSamples: [UUID: (cpu: Double, idlePolls: Int)] = [:]
 
@@ -260,9 +262,20 @@ final class AppStore: ObservableObject {
 
     // MARK: - Freeze (idle sessions parked with SIGSTOP)
 
+    /// User-initiated SIGSTOP from the terminal's context menu.
+    func sleepSession(_ id: UUID) {
+        guard let session = sessions.first(where: { $0.id == id }),
+              !session.exited, !session.hibernated,
+              !frozenSessionIDs.contains(id) else { return }
+        if TerminalRegistry.shared.freeze(id) {
+            frozenSessionIDs.insert(id)
+            manualSleepIDs.insert(id)
+        }
+    }
+
     private func pollFreeze() {
         guard OrkSettings.shared.freezeEnabled else {
-            for id in Array(frozenSessionIDs) { wake(id) }
+            for id in Array(frozenSessionIDs) where !manualSleepIDs.contains(id) { wake(id) }
             return
         }
         let requiredPolls = max(1, Int(freezeAfter / Self.freezePollInterval))
@@ -293,7 +306,32 @@ final class AppStore: ObservableObject {
         guard frozenSessionIDs.contains(id) else { return }
         TerminalRegistry.shared.thaw(id)
         frozenSessionIDs.remove(id)
+        manualSleepIDs.remove(id)
         cpuSamples[id] = nil
+    }
+
+    // MARK: - Hibernate (process killed, memory freed, resumes on demand)
+
+    func hibernate(_ id: UUID) {
+        guard let index = sessions.firstIndex(where: { $0.id == id }),
+              !sessions[index].exited, !sessions[index].hibernated else { return }
+        TerminalRegistry.shared.terminate(id)
+        sessions[index].hibernated = true
+        frozenSessionIDs.remove(id)
+        manualSleepIDs.remove(id)
+        cpuSamples[id] = nil
+        if focusedSessionID == id { focusedSessionID = nil }
+        if focusModeSessionID == id { focusModeSessionID = nil }
+        // The next terminal attach relaunches with the agent's resume command.
+        restoredSessionIDs.insert(id)
+        save()
+    }
+
+    func resumeHibernated(_ id: UUID) {
+        guard let index = sessions.firstIndex(where: { $0.id == id }),
+              sessions[index].hibernated else { return }
+        sessions[index].hibernated = false
+        save()
     }
 
     // MARK: - Git stats (card chips)

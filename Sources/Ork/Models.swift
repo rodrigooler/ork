@@ -42,15 +42,35 @@ struct Workspace: Identifiable, Codable, Hashable {
     var organizationID: UUID?
 }
 
-struct TerminalSession: Identifiable, Codable, Hashable {
+struct TerminalSession: Identifiable, Hashable {
     let id: UUID
     let workspaceID: UUID
     let agent: AgentProfile
     let directory: String
     let worktreeBranch: String?
     var exited = false
+    /// Process killed to free memory; resumes on demand with the agent's resume command.
+    var hibernated = false
 
     var shortID: String { String(id.uuidString.prefix(4)).lowercased() }
+}
+
+extension TerminalSession: Codable {
+    private enum CodingKeys: String, CodingKey {
+        case id, workspaceID, agent, directory, worktreeBranch, exited, hibernated
+    }
+
+    // Hand-rolled so state.json files written before a field existed still decode.
+    init(from decoder: Decoder) throws {
+        let container = try decoder.container(keyedBy: CodingKeys.self)
+        id = try container.decode(UUID.self, forKey: .id)
+        workspaceID = try container.decode(UUID.self, forKey: .workspaceID)
+        agent = try container.decode(AgentProfile.self, forKey: .agent)
+        directory = try container.decode(String.self, forKey: .directory)
+        worktreeBranch = try container.decodeIfPresent(String.self, forKey: .worktreeBranch)
+        exited = try container.decodeIfPresent(Bool.self, forKey: .exited) ?? false
+        hibernated = try container.decodeIfPresent(Bool.self, forKey: .hibernated) ?? false
+    }
 }
 
 struct DBConnection: Identifiable, Codable, Hashable {

@@ -128,6 +128,15 @@ final class TerminalRegistry: NSObject {
         // ponytail: dropping the last reference closes the PTY master and SIGHUPs the child
     }
 
+    /// Ends the process group deterministically and frees the terminal view
+    /// (hibernate path). SIGHUP goes out before close so memory returns now,
+    /// not whenever the view deallocates.
+    func terminate(_ id: UUID) {
+        thaw(id)
+        if let pid = shellPid(for: id) { kill(-pid, SIGHUP) }
+        close(id)
+    }
+
     // MARK: - Settings
 
     /// Live-applies the Settings font to every open terminal.
@@ -244,6 +253,9 @@ extension TerminalRegistry: LocalProcessTerminalViewDelegate {
 final class TerminalDropContainer: NSView {
     private weak var terminal: LocalProcessTerminalView?
 
+    var onSleep: (() -> Void)?
+    var onHibernate: (() -> Void)?
+
     init(terminal: LocalProcessTerminalView) {
         super.init(frame: terminal.frame)
         self.terminal = terminal
@@ -254,6 +266,23 @@ final class TerminalDropContainer: NSView {
     }
 
     required init?(coder: NSCoder) { nil }
+
+    // SwiftTerm never overrides rightMouseDown, so the click bubbles here.
+    override func menu(for event: NSEvent) -> NSMenu? {
+        let menu = NSMenu()
+        let sleep = NSMenuItem(title: "Sleep", action: #selector(sleepAction), keyEquivalent: "")
+        sleep.target = self
+        sleep.image = NSImage(systemSymbolName: "moon.zzz", accessibilityDescription: nil)
+        menu.addItem(sleep)
+        let hibernate = NSMenuItem(title: "Hibernate (Free Memory)", action: #selector(hibernateAction), keyEquivalent: "")
+        hibernate.target = self
+        hibernate.image = NSImage(systemSymbolName: "memorychip", accessibilityDescription: nil)
+        menu.addItem(hibernate)
+        return menu
+    }
+
+    @objc private func sleepAction() { onSleep?() }
+    @objc private func hibernateAction() { onHibernate?() }
 
     override func draggingEntered(_ sender: NSDraggingInfo) -> NSDragOperation { .copy }
 
