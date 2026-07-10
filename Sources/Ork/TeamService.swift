@@ -186,6 +186,7 @@ final class TeamService {
         // Batch per recipient: several messages in one scan window become a
         // single injection, one agent turn instead of N.
         var perTarget: [UUID: [String]] = [:]
+        var routedSummaries: [String] = []
         for url in entries.sorted(by: { $0.lastPathComponent < $1.lastPathComponent }) {
             guard let parsed = Self.parseMessageFilename(url.lastPathComponent) else { continue }
             let content = (try? String(contentsOf: url, encoding: .utf8))?
@@ -221,10 +222,16 @@ final class TeamService {
                 }
                 perTarget[target.id, default: []].append("[team msg from \(parsed.sender)] \(content)")
             }
+            if targets.contains(where: { !$0.hibernated }) {
+                routedSummaries.append("\(parsed.sender) → \(parsed.recipient): \(content.prefix(56))")
+            }
         }
         for (id, lines) in perTarget {
             store.wake(id)
             TerminalRegistry.shared.send(id, text: Self.bracketedPaste(lines.joined(separator: "\n")) + "\r")
+        }
+        for message in routedSummaries {
+            EventFeed.shared.post(symbol: "bubble.left.and.bubble.right", text: message)
         }
     }
 

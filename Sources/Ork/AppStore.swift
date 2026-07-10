@@ -237,6 +237,7 @@ final class AppStore: ObservableObject {
         )
         sessions.append(session)
         save()
+        EventFeed.shared.post(symbol: agent.symbol, tintHex: agent.tintHex, text: "\(agent.name) spawned in \(workspace.name)")
         return session
     }
 
@@ -284,6 +285,7 @@ final class AppStore: ObservableObject {
                 body: session.worktreeBranch.map { "\(workspaceName) · \($0)" } ?? workspaceName
             )
         }
+        EventFeed.shared.post(symbol: "xmark.circle", tintHex: 0xC96A5F, text: "\(session.displayName) exited in \(workspaceName)")
         save()
     }
 
@@ -306,6 +308,9 @@ final class AppStore: ObservableObject {
         if TerminalRegistry.shared.freeze(id) {
             frozenSessionIDs.insert(id)
             manualSleepIDs.insert(id)
+            if let session = sessions.first(where: { $0.id == id }) {
+                EventFeed.shared.post(symbol: "moon.zzz", tintHex: 0x6F6B62, text: "\(session.displayName) slept")
+            }
         }
     }
 
@@ -335,6 +340,7 @@ final class AppStore: ObservableObject {
             if idlePolls >= requiredPolls, TerminalRegistry.shared.freeze(id) {
                 frozenSessionIDs.insert(id)
                 notifyCoordinatorOfIdleMember(session)
+                EventFeed.shared.post(symbol: "snowflake", tintHex: 0x6F6B62, text: "\(session.displayName) went idle, frozen")
             }
         }
     }
@@ -376,6 +382,7 @@ final class AppStore: ObservableObject {
         // The next terminal attach relaunches with the agent's resume command.
         restoredSessionIDs.insert(id)
         save()
+        EventFeed.shared.post(symbol: "memorychip", tintHex: 0x6F6B62, text: "\(sessions[index].displayName) hibernated, memory freed")
     }
 
     func resumeHibernated(_ id: UUID) {
@@ -383,6 +390,7 @@ final class AppStore: ObservableObject {
               sessions[index].hibernated else { return }
         sessions[index].hibernated = false
         save()
+        EventFeed.shared.post(symbol: "bolt", text: "\(sessions[index].displayName) resumed")
     }
 
     // MARK: - Git stats (card chips)
@@ -486,7 +494,9 @@ final class AppStore: ObservableObject {
         }
         save()
         let newName = TeamService.memberName(sessions[index])
-        guard newName != oldName, teamSessionIDs.contains(id) else { return }
+        guard newName != oldName else { return }
+        EventFeed.shared.post(symbol: "pencil", text: "\(oldName) is now \(newName)")
+        guard teamSessionIDs.contains(id) else { return }
         let workspaceID = session.workspaceID
         TeamService.shared.appendLog(workspaceID, "- [\(TeamService.timestamp())] \(oldName) renamed to \(newName)")
         let members = teamMembers(in: workspaceID)
@@ -519,6 +529,7 @@ final class AppStore: ObservableObject {
             TerminalRegistry.shared.send(member.id, text: TeamService.bracketedPaste(note) + "\r")
         }
         TeamService.shared.appendLog(ws.id, "- [\(TeamService.timestamp())] \(TeamService.memberName(session)) joined")
+        EventFeed.shared.post(symbol: "person.2.fill", text: "\(TeamService.memberName(session)) joined the \(ws.name) team")
         save()
     }
 
@@ -535,6 +546,7 @@ final class AppStore: ObservableObject {
             TerminalRegistry.shared.send(member.id, text: TeamService.bracketedPaste(note) + "\r")
         }
         TeamService.shared.appendLog(session.workspaceID, "- [\(TeamService.timestamp())] \(TeamService.memberName(session)) left")
+        EventFeed.shared.post(symbol: "person.2.slash", tintHex: 0x6F6B62, text: "\(TeamService.memberName(session)) left the team")
         if wasCoordinator { promoteNextCoordinator(in: session.workspaceID) }
         TeamService.shared.stopWatcherIfIdle(session.workspaceID)
         save()
@@ -550,6 +562,7 @@ final class AppStore: ObservableObject {
             text: "the coordinator left. \(TeamService.coordinatorRole)"
         )
         TeamService.shared.appendLog(workspaceID, "- [\(TeamService.timestamp())] \(TeamService.memberName(next)) promoted to coordinator")
+        EventFeed.shared.post(symbol: "crown", text: "\(TeamService.memberName(next)) promoted to coordinator")
     }
 
     // MARK: - Connections (scoped per workspace)

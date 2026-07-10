@@ -65,34 +65,43 @@ struct DotGrid: View {
 /// so there is zero app-side per-frame work and it pauses when occluded.
 struct AnimatedRail: View {
     var height: CGFloat = 2.5
+    /// nil = the multi-agent tint marquee; pass a set for a themed rail
+    /// (the notch uses the logo-orange family).
+    var tints: [Color]? = nil
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
 
+    /// Ember gradient for the notch: clay family only, no rainbow.
+    static let emberTints = [
+        OrkTheme.clay, Color(hex: 0xFFA25E), Color(hex: 0xB84A1B), Color(hex: 0xFFC08A), OrkTheme.clay,
+    ]
+
     var body: some View {
-        RailLayer(animating: !reduceMotion)
+        RailLayer(animating: !reduceMotion, tints: tints)
             .frame(height: height)
             .clipShape(Capsule())
     }
 }
 
-private struct RailLayer: NSViewRepresentable {
+struct RailLayer: NSViewRepresentable {
     let animating: Bool
+    var tints: [Color]? = nil
 
-    func makeNSView(context: Context) -> RailView { RailView() }
+    func makeNSView(context: Context) -> RailView { RailView(tints: tints) }
     func updateNSView(_ nsView: RailView, context: Context) { nsView.animating = animating }
 }
 
 /// A gradient layer twice the view's width, slid one width per loop.
-private final class RailView: NSView {
+final class RailView: NSView {
     private let gradient = CAGradientLayer()
     var animating = true {
         didSet { if oldValue != animating { restart() } }
     }
 
-    override init(frame: NSRect) {
-        super.init(frame: frame)
+    init(tints: [Color]?) {
+        super.init(frame: .zero)
         wantsLayer = true
-        let tints = [OrkTheme.clay, Color(hex: 0x97B380), Color(hex: 0x7FA3C4), Color(hex: 0xC7A566), OrkTheme.clay]
-        let colors = tints.map { NSColor($0).cgColor }
+        let resolved = tints ?? [OrkTheme.clay, Color(hex: 0x97B380), Color(hex: 0x7FA3C4), Color(hex: 0xC7A566), OrkTheme.clay]
+        let colors = resolved.map { NSColor($0).cgColor }
         gradient.colors = colors + colors
         gradient.startPoint = CGPoint(x: 0, y: 0.5)
         gradient.endPoint = CGPoint(x: 1, y: 0.5)

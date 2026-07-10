@@ -73,6 +73,7 @@ struct TerminalSession: Identifiable, Hashable {
     var persona: String?
 
     var shortID: String { String(id.uuidString.prefix(4)).lowercased() }
+    var displayName: String { customName ?? agent.name }
 }
 
 extension TerminalSession: Codable {
