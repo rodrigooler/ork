@@ -1,14 +1,16 @@
 import AppKit
 import SwiftUI
 
-/// Live view of the workspace agent team: members, the shared board and the
-/// message log. Read-only; agents own the files.
+/// Live view of the workspace agent team: members, the shared board, the
+/// message log and a composer to message the team as 'user'.
 struct TeamPane: View {
     @EnvironmentObject private var store: AppStore
     let workspace: Workspace
 
     @State private var board = ""
     @State private var log: [String] = []
+    @State private var draft = ""
+    @State private var recipient = "all"
 
     private var members: [TerminalSession] {
         store.teamMembers(in: workspace.id)
@@ -26,6 +28,8 @@ struct TeamPane: View {
                         boardView.frame(minWidth: 300)
                         logView.frame(minWidth: 260)
                     }
+                    Rectangle().fill(OrkTheme.hairline).frame(height: 1)
+                    composer
                 }
             }
         }
@@ -137,6 +141,57 @@ struct TeamPane: View {
                 .padding(12)
             }
         }
+    }
+
+    /// Talk to the team without typing into a member's terminal. Messages go
+    /// through the regular outbox, so agents see them as coming from 'user'.
+    private var composer: some View {
+        HStack(spacing: 8) {
+            Picker("", selection: $recipient) {
+                Text("all").tag("all")
+                ForEach(members) { member in
+                    let name = TeamService.memberName(member)
+                    Text(name).tag(name)
+                }
+            }
+            .labelsHidden()
+            .controlSize(.small)
+            .frame(width: 150)
+            TextField("Message the team as 'user'", text: $draft)
+                .textFieldStyle(.plain)
+                .font(.system(size: 11.5, design: .monospaced))
+                .foregroundStyle(OrkTheme.cream)
+                .onSubmit(send)
+            if draft.count > TeamService.messageCharCap {
+                Text("\(draft.count)/\(TeamService.messageCharCap)")
+                    .font(.system(size: 10, design: .monospaced))
+                    .foregroundStyle(OrkTheme.brick)
+            }
+            Button("Send", action: send)
+                .controlSize(.small)
+                .disabled(!canSend)
+        }
+        .padding(.horizontal, 12)
+        .padding(.vertical, 8)
+        .background(OrkTheme.well)
+        .onChange(of: members.map(TeamService.memberName)) { _, names in
+            if recipient != "all", !names.contains(recipient) { recipient = "all" }
+        }
+    }
+
+    private var canSend: Bool {
+        let trimmed = draft.trimmingCharacters(in: .whitespacesAndNewlines)
+        return !trimmed.isEmpty && trimmed.count <= TeamService.messageCharCap
+    }
+
+    private func send() {
+        guard canSend else { return }
+        TeamService.shared.sendFromUser(
+            workspaceID: workspace.id,
+            to: recipient,
+            text: draft.trimmingCharacters(in: .whitespacesAndNewlines)
+        )
+        draft = ""
     }
 
     private func paneTitle(_ title: String, symbol: String) -> some View {

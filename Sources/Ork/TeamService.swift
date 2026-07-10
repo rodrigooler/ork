@@ -226,6 +226,17 @@ final class TeamService {
         TerminalRegistry.shared.send(session.id, text: Self.bracketedPaste("[team] \(text)") + "\r")
     }
 
+    static func userMessageFilename(to recipient: String) -> String {
+        "user__\(recipient)__\(Int(Date().timeIntervalSince1970 * 1000)).md"
+    }
+
+    /// The user talks to the team through the same outbox as the agents, so
+    /// delivery, logging and batching stay on one path.
+    func sendFromUser(workspaceID: UUID, to recipient: String, text: String) {
+        let url = Self.outboxURL(workspaceID).appendingPathComponent(Self.userMessageFilename(to: recipient))
+        try? text.write(to: url, atomically: true, encoding: .utf8)
+    }
+
     func appendLog(_ workspaceID: UUID, _ line: String) {
         let url = Self.logURL(workspaceID)
         let data = Data((line + "\n").utf8)

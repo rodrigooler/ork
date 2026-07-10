@@ -57,6 +57,12 @@ final class TeamServiceTests: XCTestCase {
         XCTAssertTrue(TeamService.resolve("claude", from: codexName, members: [claude, claude2]).isEmpty)
     }
 
+    func testUserMessageFilenameRoundTrips() {
+        let parsed = TeamService.parseMessageFilename(TeamService.userMessageFilename(to: "all"))
+        XCTAssertEqual(parsed?.sender, "user")
+        XCTAssertEqual(parsed?.recipient, "all")
+    }
+
     func testBriefingCarriesTheEconomyProtocol() {
         let workspace = Workspace(id: UUID(), name: "acme", path: "/tmp/acme", organizationID: nil)
         let session = member("claude", workspace.id)
