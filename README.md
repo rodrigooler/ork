@@ -21,17 +21,19 @@ Terminal agents multiplied, and running four of them across ad hoc terminal tabs
 ## Features
 
 - **Workspaces and organizations**: register project folders and group them by company or context; each workspace runs its own agent fleet.
-- **Agent sessions**: spawn Claude Code, Codex, OpenCode, Gemini CLI or a plain shell in one click.
+- **Agent sessions**: spawn Claude Code, Codex, OpenCode, Gemini CLI or a plain shell in one click; add your own agents via `agents.json`.
+- **Agent teams**: join terminals into a team; Ork routes terminal-to-terminal messages, a shared `board.md` holds common context, and a team pane shows members, board and message log. Message shapes, a char cap and per-recipient batching keep the token spend low.
 - **Worktree isolation**: each session runs on its own branch in a dedicated worktree, created with plain `git worktree add`.
+- **Git pane**: commit graph, worktree strip and diff viewer; merge a worktree into its base branch or prune it without leaving the app. Session cards show uncommitted diff stats and commits ahead.
 - **Terminal grid and focus mode**: all sessions side by side; isolate one terminal over a dimmed backdrop, live PTY intact.
 - **Flow view**: workspace and agents as a connected topology; click a node to focus its terminal.
 - **Session persistence**: open sessions survive a relaunch, reattach to the same worktree and resume the agent conversation where the CLI supports it.
-- **Idle freeze**: a session idling for ten minutes is suspended with SIGSTOP and stops burning CPU; any interaction wakes it.
-- **Data pane per project**: register the Postgres and Redis each project talks to, with a live reachability probe.
+- **Idle freeze, sleep and hibernate**: a session idling for ten minutes is suspended with SIGSTOP and stops burning CPU; any interaction wakes it. Right-click a terminal to sleep it manually, or hibernate it to free the CLI's memory and resume the conversation later.
+- **Data pane per project**: register the Postgres and Redis each project talks to, with a live reachability probe and built-in query consoles.
 - **Usage dashboard**: token usage from your Claude Code transcripts, 14 day chart.
 - **Menu bar companion and notch glance**: running agents, today's tokens and exit notifications in the menu bar; hover the MacBook notch for a quick panel.
 - **Agent-friendly input**: Shift+Enter inserts a newline, Ctrl+Backspace deletes a word, Cmd+Backspace kills the line; paste (Ctrl+V) or drop an image and its path is typed into the prompt, ready for the agent to read.
-- **Settings** (Cmd+,): dark or light theme, terminal font and size, worktree default, idle freeze, notifications.
+- **Settings** (Cmd+,): dark or light theme, terminal font and size, worktree default, idle freeze, notifications, custom agents.
 
 ## Install
 
@@ -67,7 +69,7 @@ Sessions run inside a zsh login shell, so any agent CLI on your shell profile `P
 | Gemini CLI | `gemini` | blue |
 | Shell | `zsh` | amber |
 
-Adding an agent is a one line change in `Sources/Ork/Models.swift` for now. Config file driven agents are on the roadmap.
+Custom agents live in `~/Library/Application Support/Ork/agents.json`, one entry per agent with `slug`, `name` and `command`, plus optional `symbol` (SF Symbol), `tint` (`#RRGGBB`) and `resumeCommand`. Edit and reload from Settings.
 
 ## How worktree isolation works
 
@@ -77,7 +79,7 @@ When you spawn a session with the worktree switch on, ork runs:
 git -C <workspace> worktree add -b ork/<agent>-<id> <parent>/.ork-worktrees/<repo>/<agent>-<id>
 ```
 
-The agent starts inside that fresh worktree, on its own branch, so two agents never fight over the same files. Closing a session keeps the worktree on disk (no work is ever lost); prune with `git worktree prune` when you are done.
+The agent starts inside that fresh worktree, on its own branch, so two agents never fight over the same files. Closing a session keeps the worktree on disk (no work is ever lost); merge it into the base branch or prune it from the git pane when you are done.
 
 ## Architecture
 
@@ -87,24 +89,29 @@ Sources/Ork/
 ├── Theme.swift             design tokens, motion voice, backdrop, panel styles
 ├── Models.swift            AgentProfile, Workspace, TerminalSession, DBConnection
 ├── AppStore.swift          app state + JSON persistence (Application Support)
+├── AgentConfig.swift       custom agents from agents.json
 ├── WorktreeService.swift   git worktree plumbing
 ├── TerminalRegistry.swift  PTY lifecycle, focus tracking, terminal font stack
 ├── FreezeService.swift     SIGSTOP/SIGCONT for idle sessions
+├── TeamService.swift       team messaging: outbox watcher, routing, board
+├── GitService.swift        git plumbing for the git pane (log, diff, merge)
+├── GitGraph.swift          commit graph lane assignment
+├── QueryService.swift      Postgres and Redis query consoles
 ├── NotchPanel.swift        notch glance panel (borderless NSPanel)
 ├── UsageService.swift      token usage from Claude Code transcripts
 ├── Notifier.swift          exit notifications (osascript)
 ├── Reachability.swift      TCP probe for data endpoints
 ├── Logo.swift              brand mark, Dock icon, bundled Orbitron face
-└── Views/                  SwiftUI: sidebar, grid, flow topology, data pane, usage, menu bar panel
+└── Views/                  SwiftUI: sidebar, grid, flow topology, git pane, team pane, data pane, usage, menu bar panel
 ```
 
-One external dependency: [SwiftTerm](https://github.com/migueldeicaza/SwiftTerm) for terminal emulation.
+External dependencies: [SwiftTerm](https://github.com/migueldeicaza/SwiftTerm) for terminal emulation, [PostgresNIO](https://github.com/vapor/postgres-nio) and [RediStack](https://github.com/swift-server/RediStack) for the query consoles.
 
 Design decisions and trade-offs live in [docs/DESIGN.md](docs/DESIGN.md).
 
 ## Roadmap
 
-The plan lives in [ROADMAP.md](ROADMAP.md). Next up: query consoles for Postgres and Redis, config file driven agents, and a worktree janitor.
+The plan lives in [ROADMAP.md](ROADMAP.md). Next up: a message box to talk to the agent team from the team pane, custom team roles, and console history.
 
 ## Inspiration
 

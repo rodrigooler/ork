@@ -4,8 +4,8 @@ Priorities for ork, in order. Items move up or down based on real usage; open an
 
 ## Next (0.6)
 
-- **Team roles**: per-member role prompts in the join briefing, editable from the team pane.
-- **Deliver-on-idle**: hold team messages while the recipient is mid-task and inject when its CPU settles.
+- **Team message box**: talk to the agent team from the team pane instead of typing into a member's terminal.
+- **Custom team roles**: editable per-member role prompts from the team pane. Coordinator and member roles shipped in 0.5.0.
 - **Console history**: recall past queries per connection.
 
 ## Later
@@ -17,7 +17,7 @@ Priorities for ork, in order. Items move up or down based on real usage; open an
 - **Notch on external displays**: the glance panel only attaches to the built-in screen today.
 - **Scrollable terminal grid**: keep cells usable past six concurrent sessions.
 
-## Shipped since 0.4.0
+## Shipped in 0.5.0
 
 - Settings window: theme (dark and light), terminal font, behavior toggles.
 - Agent-friendly terminal input: Shift+Enter newline, Ctrl+Backspace, image paste and drag-and-drop.
@@ -28,6 +28,7 @@ Priorities for ork, in order. Items move up or down based on real usage; open an
 - Worktree janitor: diff, merge and prune from the git pane.
 - Query consoles for Postgres (PostgresNIO) and Redis (RediStack).
 - Agent teams: terminal-to-terminal messaging routed by Ork, shared board.md, message log and team pane.
+- Economical team protocol: fixed message shapes, char cap with bounce, per-recipient batching, coordinator role and succession.
 
 ## Shipped in 0.4.0
 
