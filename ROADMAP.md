@@ -4,6 +4,7 @@ Priorities for ork, in order. Items move up or down based on real usage; open an
 
 ## Next (0.6)
 
+- **Agent tool timeline**: live tool events per session by tailing the agent's transcript, AgentPeek style, in the notch and session cards.
 - **Custom team roles**: editable per-member role prompts from the team pane. Coordinator and member roles shipped in 0.5.0.
 - **Console history**: recall past queries per connection.
 
@@ -13,10 +14,14 @@ Priorities for ork, in order. Items move up or down based on real usage; open an
 - Rename agents: give a terminal a human name from the context menu; teams address it by that name.
 - Stack layout: tab strip on top, one terminal expanded, the rest collapsed but alive.
 - Single main window: a duplicate window stole the terminal views (dead scroll, blank cards).
+- Configure a running agent from the context menu: model, effort and a standing role (persona).
+- Notch glance 2.0: wider bar with a live event ticker and ember gradient, expanded panel with session rows and a timeline.
 - Near-zero idle work: git stat polling pauses while the window is hidden and skips frozen or hibernated sessions; pane refresh loops pause when occluded.
 
 ## Later
 
+- **Notch actions**: answer plans, questions and permission prompts without leaving the notch.
+- **Usage limit windows**: rate-limit windows and monthly spend per agent, where the CLI exposes them.
 - **Observability pane**: Loki queries, Tempo traces, Grafana links and OpenTelemetry status per project.
 - **Queue endpoints**: RabbitMQ and Kafka reachability and basic inspection in the data pane.
 - **Draggable flow canvas**: free node placement plus live agent status parsed from the terminal stream.
