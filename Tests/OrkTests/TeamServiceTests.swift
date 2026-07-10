@@ -104,6 +104,30 @@ final class TeamServiceTests: XCTestCase {
         XCTAssertFalse(plain.contains("standing role"))
     }
 
+    func testBriefingCarriesTheReviewAndPullProtocol() {
+        let workspace = Workspace(id: UUID(), name: "acme", path: "/tmp/acme", organizationID: nil)
+        let coordinator = TeamService.shared.briefing(for: member("claude", workspace.id), workspace: workspace, teammates: [])
+        for marker in ["claim <id>", "rework <id>", "approved <id>", "## Backlog", "members.md", "escalate <id>"] {
+            XCTAssertTrue(coordinator.contains(marker), "coordinator briefing missing '\(marker)'")
+        }
+        let mate = TeamService.shared.briefing(for: member("codex", workspace.id), workspace: workspace, teammates: ["claude-1a2b"])
+        XCTAssertTrue(mate.contains("claim <id>"))
+        XCTAssertTrue(mate.contains("'sleep' to ork"))
+    }
+
+    func testBoardTemplateHasThePullQueue() {
+        let board = TeamService.boardTemplate(workspaceName: "acme")
+        for heading in ["## Backlog", "## Tasks", "## Status", "## Archive"] {
+            XCTAssertTrue(board.contains(heading), "board template missing '\(heading)'")
+        }
+    }
+
+    func testControlFilenameParsesToTheReservedRecipient() {
+        let parsed = TeamService.parseMessageFilename("Rodrigo__ork__1234.md")
+        XCTAssertEqual(parsed?.sender, "Rodrigo")
+        XCTAssertEqual(parsed?.recipient, TeamService.controlRecipient)
+    }
+
     func testFirstJoinerBriefsAsCoordinatorLaterOnesReportToThem() {
         let workspace = Workspace(id: UUID(), name: "acme", path: "/tmp/acme", organizationID: nil)
         let session = TerminalSession(

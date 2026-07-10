@@ -278,6 +278,7 @@ final class AppStore: ObservableObject {
         sessions[index].exited = true
         let session = sessions[index]
         if wasCoordinator { promoteNextCoordinator(in: session.workspaceID) }
+        if teamSessionIDs.contains(id) { TeamService.shared.writeMembersFile(session.workspaceID) }
         let workspaceName = workspace(id: session.workspaceID)?.name ?? "project"
         if OrkSettings.shared.notifyOnExit {
             Notifier.notify(
@@ -486,7 +487,10 @@ final class AppStore: ObservableObject {
         if cleaned.isEmpty {
             sessions[index].customName = nil
         } else {
-            let taken = sessions.contains {
+            // 'ork', 'all' and 'user' are routing keywords; a member wearing
+            // one would be unreachable or impersonate the user.
+            let reserved = ["ork", "all", "user"].contains(cleaned.lowercased())
+            let taken = reserved || sessions.contains {
                 $0.id != id && !$0.exited && $0.workspaceID == session.workspaceID
                     && TeamService.memberName($0) == cleaned
             }
@@ -504,6 +508,7 @@ final class AppStore: ObservableObject {
             memberNamed: newName, in: members,
             text: "you are now named '\(newName)'. Sign outbox files as \(newName)__RECIPIENT__$RANDOM.md; teammates messaging '\(oldName)' get bounced with the roster."
         )
+        TeamService.shared.writeMembersFile(workspaceID)
     }
 
     // MARK: - Team (terminal-to-terminal messaging via TeamService)
@@ -519,6 +524,7 @@ final class AppStore: ObservableObject {
         let existing = teamMembers(in: ws.id)
         teamSessionIDs.insert(id)
         TeamService.shared.ensureTeam(workspaceID: ws.id, workspaceName: ws.name)
+        TeamService.shared.writeMembersFile(ws.id)
         let briefing = TeamService.shared.briefing(
             for: session, workspace: ws, teammates: existing.map(TeamService.memberName)
         )
@@ -548,6 +554,7 @@ final class AppStore: ObservableObject {
         TeamService.shared.appendLog(session.workspaceID, "- [\(TeamService.timestamp())] \(TeamService.memberName(session)) left")
         EventFeed.shared.post(symbol: "person.2.slash", tintHex: 0x6F6B62, text: "\(TeamService.memberName(session)) left the team")
         if wasCoordinator { promoteNextCoordinator(in: session.workspaceID) }
+        TeamService.shared.writeMembersFile(session.workspaceID)
         TeamService.shared.stopWatcherIfIdle(session.workspaceID)
         save()
     }
