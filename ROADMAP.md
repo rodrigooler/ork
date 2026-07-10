@@ -4,9 +4,13 @@ Priorities for ork, in order. Items move up or down based on real usage; open an
 
 ## Next (0.6)
 
-- **Team message box**: talk to the agent team from the team pane instead of typing into a member's terminal.
 - **Custom team roles**: editable per-member role prompts from the team pane. Coordinator and member roles shipped in 0.5.0.
 - **Console history**: recall past queries per connection.
+
+## Shipped since 0.5.0
+
+- Team message box: talk to the agent team from the team pane as 'user'.
+- Near-zero idle work: git stat polling pauses while the window is hidden and skips frozen or hibernated sessions; pane refresh loops pause when occluded.
 
 ## Later
 
