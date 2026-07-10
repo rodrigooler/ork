@@ -47,35 +47,40 @@ final class TeamService {
     }
 
     /// The first member to join coordinates; everyone else reports to them.
-    /// The role text is what makes the team parallelize instead of chatting.
+    /// The protocol rules are what keep N-member teams fast and factual:
+    /// pointers over payloads, the board as single source of truth, and
+    /// verified-only reporting.
     func briefing(for session: TerminalSession, workspace: Workspace, teammates: [String]) -> String {
         let dir = Self.teamDir(workspace.id).path
         let name = Self.memberName(session)
         let isCoordinator = teammates.isEmpty
         let mates = teammates.isEmpty ? "none yet" : teammates.joined(separator: ", ")
-        let role = isCoordinator
-            ? """
-            You are the COORDINATOR. When the user gives you a multi-step task: split it into \
-            independent subtasks, write them on the board under '## Tasks' as '- [ ] task — owner', \
-            message each owner their assignment immediately, and start your own share. Do not do \
-            work a teammate could do in parallel. Integrate results as 'done' reports arrive. \
-            Ork freezes idle teammates to save CPU and tells you when that happens; your message \
-            wakes them with the task attached, so never assume a quiet teammate is gone. If someone \
-            has not reported in a while, ping them.
-            """
-            : """
-            Your coordinator is \(teammates.first ?? "the first member"). When you get an assignment: \
-            do it right away, tick its box on the board, and message the coordinator 'done: <task>' \
-            with a one-line result. If you are idle, message the coordinator asking for work; if you \
-            get frozen while idle, any incoming message wakes you, so just act on it.
-            """
+        let role = isCoordinator ? Self.coordinatorRole : Self.memberRole(coordinator: teammates.first ?? "the first member")
         return """
-        [ork team] You are '\(name)', part of an agent team working on '\(workspace.name)'. \
-        Teammates: \(mates). Shared board (read before starting, append after): "\(dir)/board.md". \
-        To message a teammate run: echo "your text" > "\(dir)/outbox/\(name)__TEAMMATE__$RANDOM.md" \
-        replacing TEAMMATE with their name, or with 'all' to broadcast. Incoming messages appear \
-        in your input as [team msg from NAME]. \(role) Keep team messages to one or two short \
-        sentences. Acknowledge this briefing briefly and wait.
+        [ork team] You are '\(name)' on an agent team for '\(workspace.name)'. Teammates: \(mates). \
+        Board: "\(dir)/board.md". \
+        Send: echo "text" > "\(dir)/outbox/\(name)__MEMBER__$RANDOM.md" (MEMBER = teammate name, or 'all' to broadcast). \
+        Incoming messages appear in your input as [team msg from NAME]. Protocol, follow strictly: \
+        (1) Message shapes: 'task <id>: goal, files, done-criteria' | 'done <id>: one-line verified outcome' | 'blocked <id>: reason'. \
+        (2) Max \(Self.messageCharCap) chars per message; code, diffs and logs go in commits or on the board, messages carry pointers (file:line, board section). \
+        (3) The board is the single source of truth: '## Tasks' holds active work as '- [ ] id: task — owner'; in '## Status' keep ONE line per member and overwrite your own; move finished rounds to '## Archive'; never restate board content in messages. \
+        (4) Report only what you verified by running or reading; mark guesses 'unverified'; never invent or assume teammate results. \
+        \(role) Keep messages short and factual. Acknowledge this briefing briefly and wait.
+        """
+    }
+
+    static let coordinatorRole = """
+    You are the COORDINATOR: split multi-step work into independent subtasks on the board, \
+    message each owner immediately, take your own share, and integrate 'done' reports. Ork \
+    freezes idle teammates and notifies you; your message wakes them with the task attached, \
+    so never assume a quiet teammate is gone. Ping anyone silent for too long.
+    """
+
+    static func memberRole(coordinator: String) -> String {
+        """
+        Your coordinator is \(coordinator): act on assignments immediately, tick the box on the \
+        board, report 'done <id>'. If idle, ask for work. Getting frozen while idle is normal; \
+        any incoming message wakes you, just act on it.
         """
     }
 
@@ -93,14 +98,18 @@ final class TeamService {
             # Team Board — \(workspaceName)
 
             Shared context for every agent on this team. Read before starting a task.
-            Append under the sections below; never rewrite other agents' entries.
+            Keep it small: this file is read often, so redundancy costs everyone.
 
             ## Tasks
-            <!-- coordinator splits work here: - [ ] task — owner -->
+            <!-- active work only: - [ ] id: task — owner ; finished rounds move to Archive -->
 
             ## Decisions
+            <!-- one line each, append-only -->
 
             ## Status
+            <!-- ONE line per member, overwrite your own: name: current state -->
+
+            ## Archive
 
             """
             try? template.write(to: board, atomically: true, encoding: .utf8)
@@ -137,9 +146,37 @@ final class TeamService {
 
     // MARK: - Routing
 
+    /// Longer payloads belong on the board or in commits; the cap keeps
+    /// N-member teams from flooding each other's context windows.
+    static let messageCharCap = 1200
+
+    /// Resolves a recipient segment to sessions. Exact name, then 'all'
+    /// (minus the sender), then a unique fuzzy match ("b507" finds
+    /// claude-b507). Digit-only strays like a bare $RANDOM never match.
+    static func resolve(_ raw: String, from sender: String, members: [TerminalSession]) -> [TerminalSession] {
+        if raw == "all" { return members.filter { memberName($0) != sender } }
+        if let exact = members.first(where: { memberName($0) == raw }) { return [exact] }
+        let needle = normalize(raw)
+        guard needle.rangeOfCharacter(from: .letters) != nil else { return [] }
+        let fuzzy = members.filter { member in
+            let name = normalize(memberName(member))
+            return name.contains(needle) || needle.contains(name)
+        }
+        return fuzzy.count == 1 ? fuzzy : []
+    }
+
+    private static func normalize(_ text: String) -> String {
+        text.lowercased().filter { $0.isLetter || $0.isNumber }
+    }
+
     func scanOutbox(_ workspaceID: UUID) {
         let fm = FileManager.default
-        guard let entries = try? fm.contentsOfDirectory(at: Self.outboxURL(workspaceID), includingPropertiesForKeys: nil) else { return }
+        guard let entries = try? fm.contentsOfDirectory(at: Self.outboxURL(workspaceID), includingPropertiesForKeys: nil),
+              let store else { return }
+        let members = store.teamMembers(in: workspaceID)
+        // Batch per recipient: several messages in one scan window become a
+        // single injection, one agent turn instead of N.
+        var perTarget: [UUID: [String]] = [:]
         for url in entries.sorted(by: { $0.lastPathComponent < $1.lastPathComponent }) {
             guard let parsed = Self.parseMessageFilename(url.lastPathComponent) else { continue }
             let content = (try? String(contentsOf: url, encoding: .utf8))?
@@ -148,36 +185,37 @@ final class TeamService {
             // next directory event retries this file.
             guard !content.isEmpty else { continue }
             try? fm.removeItem(at: url)
-            route(content, from: parsed.sender, to: parsed.recipient, workspaceID: workspaceID)
-        }
-    }
 
-    private func route(_ text: String, from sender: String, to recipient: String, workspaceID: UUID) {
-        guard let store else { return }
-        let members = store.teamMembers(in: workspaceID)
-        let targets = recipient == "all"
-            ? members.filter { Self.memberName($0) != sender }
-            : members.filter { Self.memberName($0) == recipient }
-        appendLog(workspaceID, "- [\(Self.timestamp())] \(sender) → \(recipient): \(text)")
-        guard !targets.isEmpty else {
-            // A dropped assignment deadlocks the team; bounce it so the
-            // sender can correct the name instead of waiting forever.
-            appendLog(workspaceID, "  (undelivered: no team member named '\(recipient)', bounced to sender)")
-            let roster = members.map(Self.memberName).joined(separator: ", ")
-            notify(memberNamed: sender, in: members,
-                   text: "delivery FAILED: no member named '\(recipient)'. Members: \(roster). Resend as \(sender)__MEMBER__$RANDOM.md.")
-            return
-        }
-        for target in targets {
-            if target.hibernated {
-                appendLog(workspaceID, "  (skipped \(Self.memberName(target)): hibernated, sender notified)")
-                notify(memberNamed: sender, in: members,
-                       text: "\(Self.memberName(target)) is hibernated and did not receive your message. Ask the user to resume it, then resend.")
+            appendLog(workspaceID, "- [\(Self.timestamp())] \(parsed.sender) → \(parsed.recipient): \(content)")
+            if content.count > Self.messageCharCap {
+                appendLog(workspaceID, "  (bounced: \(content.count) chars over the \(Self.messageCharCap) cap)")
+                notify(memberNamed: parsed.sender, in: members,
+                       text: "message to \(parsed.recipient) NOT delivered: \(content.count) chars, cap is \(Self.messageCharCap). Put details on the board or in commits and resend a pointer (file:line, board section).")
                 continue
             }
-            store.wake(target.id)
-            let message = "[team msg from \(sender)] \(text)"
-            TerminalRegistry.shared.send(target.id, text: Self.bracketedPaste(message) + "\r")
+            let targets = Self.resolve(parsed.recipient, from: parsed.sender, members: members)
+            guard !targets.isEmpty else {
+                // A dropped assignment deadlocks the team; bounce it so the
+                // sender can correct the name instead of waiting forever.
+                appendLog(workspaceID, "  (undelivered: no team member named '\(parsed.recipient)', bounced to sender)")
+                let roster = members.map(Self.memberName).joined(separator: ", ")
+                notify(memberNamed: parsed.sender, in: members,
+                       text: "delivery FAILED: no member named '\(parsed.recipient)'. Members: \(roster). Resend as \(parsed.sender)__MEMBER__$RANDOM.md.")
+                continue
+            }
+            for target in targets {
+                if target.hibernated {
+                    appendLog(workspaceID, "  (skipped \(Self.memberName(target)): hibernated, sender notified)")
+                    notify(memberNamed: parsed.sender, in: members,
+                           text: "\(Self.memberName(target)) is hibernated and did not receive your message. Ask the user to resume it, then resend.")
+                    continue
+                }
+                perTarget[target.id, default: []].append("[team msg from \(parsed.sender)] \(content)")
+            }
+        }
+        for (id, lines) in perTarget {
+            store.wake(id)
+            TerminalRegistry.shared.send(id, text: Self.bracketedPaste(lines.joined(separator: "\n")) + "\r")
         }
     }
 

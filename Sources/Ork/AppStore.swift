@@ -231,6 +231,7 @@ final class AppStore: ObservableObject {
 
     func closeSession(_ id: UUID) {
         let workspaceID = sessions.first { $0.id == id }?.workspaceID
+        let wasCoordinator = workspaceID.map { teamMembers(in: $0).first?.id == id } ?? false
         TerminalRegistry.shared.close(id)
         sessions.removeAll { $0.id == id }
         frozenSessionIDs.remove(id)
@@ -238,7 +239,10 @@ final class AppStore: ObservableObject {
         cpuSamples[id] = nil
         if focusedSessionID == id { focusedSessionID = nil }
         if focusModeSessionID == id { focusModeSessionID = nil }
-        if let workspaceID { TeamService.shared.stopWatcherIfIdle(workspaceID) }
+        if let workspaceID {
+            if wasCoordinator { promoteNextCoordinator(in: workspaceID) }
+            TeamService.shared.stopWatcherIfIdle(workspaceID)
+        }
         save()
     }
 
@@ -257,8 +261,11 @@ final class AppStore: ObservableObject {
 
     func markExited(_ id: UUID) {
         guard let index = sessions.firstIndex(where: { $0.id == id }), !sessions[index].exited else { return }
+        let wasCoordinator = teamSessionIDs.contains(id)
+            && teamMembers(in: sessions[index].workspaceID).first?.id == id
         sessions[index].exited = true
         let session = sessions[index]
+        if wasCoordinator { promoteNextCoordinator(in: session.workspaceID) }
         let workspaceName = workspace(id: session.workspaceID)?.name ?? "project"
         if OrkSettings.shared.notifyOnExit {
             Notifier.notify(
@@ -429,15 +436,32 @@ final class AppStore: ObservableObject {
 
     func leaveTeam(_ id: UUID) {
         guard teamSessionIDs.contains(id) else { return }
+        guard let session = sessions.first(where: { $0.id == id }) else {
+            teamSessionIDs.remove(id)
+            return
+        }
+        let wasCoordinator = teamMembers(in: session.workspaceID).first?.id == id
         teamSessionIDs.remove(id)
-        guard let session = sessions.first(where: { $0.id == id }) else { return }
         let note = "[team] \(TeamService.memberName(session)) left the team."
         for member in teamMembers(in: session.workspaceID) where !member.hibernated {
             TerminalRegistry.shared.send(member.id, text: TeamService.bracketedPaste(note) + "\r")
         }
         TeamService.shared.appendLog(session.workspaceID, "- [\(TeamService.timestamp())] \(TeamService.memberName(session)) left")
+        if wasCoordinator { promoteNextCoordinator(in: session.workspaceID) }
         TeamService.shared.stopWatcherIfIdle(session.workspaceID)
         save()
+    }
+
+    /// Coordinator departed: the next member in join order takes over and is
+    /// told so, otherwise the team keeps reporting to a ghost.
+    private func promoteNextCoordinator(in workspaceID: UUID) {
+        let members = teamMembers(in: workspaceID)
+        guard let next = members.first else { return }
+        TeamService.shared.notify(
+            memberNamed: TeamService.memberName(next), in: members,
+            text: "the coordinator left. \(TeamService.coordinatorRole)"
+        )
+        TeamService.shared.appendLog(workspaceID, "- [\(TeamService.timestamp())] \(TeamService.memberName(next)) promoted to coordinator")
     }
 
     // MARK: - Connections (scoped per workspace)

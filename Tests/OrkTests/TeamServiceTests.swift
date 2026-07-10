@@ -29,8 +29,42 @@ final class TeamServiceTests: XCTestCase {
         XCTAssertTrue(briefing.contains(name))
         XCTAssertTrue(briefing.contains("codex-9f9f"))
         XCTAssertTrue(briefing.contains("board.md"))
-        XCTAssertTrue(briefing.contains("\(name)__TEAMMATE__"))
+        XCTAssertTrue(briefing.contains("\(name)__MEMBER__"))
         XCTAssertTrue(briefing.contains(workspace.id.uuidString))
+    }
+
+    private func member(_ slug: String, _ ws: UUID) -> TerminalSession {
+        let agent = AgentProfile.builtin.first { $0.slug == slug } ?? .builtin[0]
+        return TerminalSession(id: UUID(), workspaceID: ws, agent: agent, directory: "/tmp", worktreeBranch: nil)
+    }
+
+    func testResolveExactAllFuzzyAndStrays() {
+        let ws = UUID()
+        let claude = member("claude", ws)
+        let codex = member("codex", ws)
+        let members = [claude, codex]
+        let claudeName = TeamService.memberName(claude)
+        let codexName = TeamService.memberName(codex)
+
+        XCTAssertEqual(TeamService.resolve(claudeName, from: codexName, members: members).map(TeamService.memberName), [claudeName])
+        XCTAssertEqual(TeamService.resolve("all", from: claudeName, members: members).map(TeamService.memberName), [codexName])
+        // Unique fuzzy: the short id alone finds its member.
+        XCTAssertEqual(TeamService.resolve(claude.shortID, from: codexName, members: members).map(TeamService.memberName), [claudeName])
+        // A bare $RANDOM (digits only) must never match anyone.
+        XCTAssertTrue(TeamService.resolve("4687", from: claudeName, members: members).isEmpty)
+        // Ambiguous needles resolve to nobody rather than guessing.
+        let claude2 = member("claude", ws)
+        XCTAssertTrue(TeamService.resolve("claude", from: codexName, members: [claude, claude2]).isEmpty)
+    }
+
+    func testBriefingCarriesTheEconomyProtocol() {
+        let workspace = Workspace(id: UUID(), name: "acme", path: "/tmp/acme", organizationID: nil)
+        let session = member("claude", workspace.id)
+        let briefing = TeamService.shared.briefing(for: session, workspace: workspace, teammates: [])
+        XCTAssertTrue(briefing.contains("Max \(TeamService.messageCharCap) chars"))
+        XCTAssertTrue(briefing.contains("done <id>"))
+        XCTAssertTrue(briefing.contains("unverified"))
+        XCTAssertTrue(briefing.contains("## Archive"))
     }
 
     func testFirstJoinerBriefsAsCoordinatorLaterOnesReportToThem() {
