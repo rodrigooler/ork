@@ -6,6 +6,8 @@ struct SessionCard: View {
     let session: TerminalSession
 
     @State private var showCloseConfirm = false
+    @State private var showRename = false
+    @State private var renameDraft = ""
 
     private var isFocused: Bool {
         store.focusedSessionID == session.id && !session.exited
@@ -26,10 +28,13 @@ struct SessionCard: View {
                     // Mounting the surface would relaunch the process; stay empty.
                     Color.clear
                 } else {
-                    TerminalSurface(session: session)
-                        .padding(.leading, 10)
-                        .padding(.trailing, 4)
-                        .padding(.vertical, 8)
+                    TerminalSurface(session: session, onRenameRequest: {
+                        renameDraft = session.customName ?? ""
+                        showRename = true
+                    })
+                    .padding(.leading, 10)
+                    .padding(.trailing, 4)
+                    .padding(.vertical, 8)
                 }
                 if session.exited {
                     exitedOverlay
@@ -68,6 +73,13 @@ struct SessionCard: View {
         .animation(OrkMotion.layout, value: session.exited)
         .animation(OrkMotion.state, value: isFrozen)
         .animation(OrkMotion.state, value: session.hibernated)
+        .alert("Rename agent", isPresented: $showRename) {
+            TextField("Name", text: $renameDraft)
+            Button("Rename") { store.renameSession(session.id, to: renameDraft) }
+            Button("Cancel", role: .cancel) {}
+        } message: {
+            Text("Teams address this terminal by its name. Leave empty to restore \(session.agent.slug)-\(session.shortID).")
+        }
     }
 
     /// Process killed to give the memory back; the conversation resumes on click.
@@ -146,9 +158,10 @@ struct SessionCard: View {
             Image(systemName: session.agent.symbol)
                 .font(.system(size: 11))
                 .foregroundStyle(session.agent.tint)
-            Text(session.agent.name)
+            Text(session.customName ?? session.agent.name)
                 .font(.system(size: 12, weight: .semibold))
                 .foregroundStyle(isFocused ? OrkTheme.cream : OrkTheme.stone)
+                .help(session.customName == nil ? "" : session.agent.name)
             Text("#\(session.shortID)")
                 .font(.system(size: 9, design: .monospaced))
                 .foregroundStyle(OrkTheme.faint)
@@ -261,6 +274,7 @@ struct SessionCard: View {
 struct TerminalSurface: NSViewRepresentable {
     @EnvironmentObject private var store: AppStore
     let session: TerminalSession
+    var onRenameRequest: (() -> Void)? = nil
 
     func makeNSView(context: Context) -> TerminalDropContainer {
         let store = store
@@ -278,6 +292,7 @@ struct TerminalSurface: NSViewRepresentable {
         container.onToggleTeam = {
             store.teamSessionIDs.contains(id) ? store.leaveTeam(id) : store.joinTeam(id)
         }
+        container.onRename = onRenameRequest
         return container
     }
 

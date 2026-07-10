@@ -57,6 +57,26 @@ final class TeamServiceTests: XCTestCase {
         XCTAssertTrue(TeamService.resolve("claude", from: codexName, members: [claude, claude2]).isEmpty)
     }
 
+    func testMemberNameHonorsCustomNameAndResolveFindsIt() {
+        let ws = UUID()
+        var rodrigo = member("claude", ws)
+        XCTAssertEqual(TeamService.memberName(rodrigo), "claude-\(rodrigo.shortID)")
+        rodrigo.customName = "Rodrigo"
+        XCTAssertEqual(TeamService.memberName(rodrigo), "Rodrigo")
+        let codex = member("codex", ws)
+        let members = [rodrigo, codex]
+        XCTAssertEqual(TeamService.resolve("Rodrigo", from: "x", members: members).map(TeamService.memberName), ["Rodrigo"])
+        // Case-insensitive fuzzy still lands on the renamed member.
+        XCTAssertEqual(TeamService.resolve("rodrigo", from: "x", members: members).map(TeamService.memberName), ["Rodrigo"])
+    }
+
+    func testSanitizedNameKeepsFilenamesParseable() {
+        XCTAssertEqual(TeamService.sanitizedName("Ro__dri/go:"), "Rodrigo")
+        XCTAssertEqual(TeamService.sanitizedName("  Carlos Eduardo  "), "Carlos Eduardo")
+        XCTAssertEqual(TeamService.sanitizedName("///"), "")
+        XCTAssertEqual(TeamService.sanitizedName(String(repeating: "a", count: 40)).count, 24)
+    }
+
     func testUserMessageFilenameRoundTrips() {
         let parsed = TeamService.parseMessageFilename(TeamService.userMessageFilename(to: "all"))
         XCTAssertEqual(parsed?.sender, "user")

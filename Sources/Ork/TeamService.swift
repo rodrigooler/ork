@@ -29,9 +29,17 @@ final class TeamService {
         teamDir(workspaceID).appendingPathComponent("outbox", isDirectory: true)
     }
 
-    /// Stable addressable name: agent slug plus the session's short id.
+    /// Team address: the user-given name when set, else slug plus short id.
     static func memberName(_ session: TerminalSession) -> String {
-        "\(session.agent.slug)-\(session.shortID)"
+        session.customName ?? "\(session.agent.slug)-\(session.shortID)"
+    }
+
+    /// Names travel inside outbox filenames, so anything that could break the
+    /// sender__recipient parsing or the filesystem is dropped.
+    static func sanitizedName(_ raw: String) -> String {
+        let cleaned = raw.filter { $0.isLetter || $0.isNumber || $0 == " " || $0 == "-" }
+            .trimmingCharacters(in: .whitespaces)
+        return String(cleaned.prefix(24)).trimmingCharacters(in: .whitespaces)
     }
 
     static func bracketedPaste(_ text: String) -> String {

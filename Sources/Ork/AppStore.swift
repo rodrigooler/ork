@@ -436,6 +436,37 @@ final class AppStore: ObservableObject {
         NSApp.windows.contains { !($0 is NSPanel) && $0.isVisible && $0.occlusionState.contains(.visible) }
     }
 
+    /// A duplicate name gets the short id appended so exact-match routing
+    /// never picks the wrong terminal; an empty name restores the default.
+    /// Teammates already self-correct on the old name (the router bounces
+    /// unknown recipients with the roster), but the renamed agent itself must
+    /// learn how to sign its outbox files, so it gets a note.
+    func renameSession(_ id: UUID, to raw: String) {
+        guard let index = sessions.firstIndex(where: { $0.id == id }) else { return }
+        let session = sessions[index]
+        let oldName = TeamService.memberName(session)
+        let cleaned = TeamService.sanitizedName(raw)
+        if cleaned.isEmpty {
+            sessions[index].customName = nil
+        } else {
+            let taken = sessions.contains {
+                $0.id != id && !$0.exited && $0.workspaceID == session.workspaceID
+                    && TeamService.memberName($0) == cleaned
+            }
+            sessions[index].customName = taken ? "\(cleaned)-\(session.shortID)" : cleaned
+        }
+        save()
+        let newName = TeamService.memberName(sessions[index])
+        guard newName != oldName, teamSessionIDs.contains(id) else { return }
+        let workspaceID = session.workspaceID
+        TeamService.shared.appendLog(workspaceID, "- [\(TeamService.timestamp())] \(oldName) renamed to \(newName)")
+        let members = teamMembers(in: workspaceID)
+        TeamService.shared.notify(
+            memberNamed: newName, in: members,
+            text: "you are now named '\(newName)'. Sign outbox files as \(newName)__RECIPIENT__$RANDOM.md; teammates messaging '\(oldName)' get bounced with the roster."
+        )
+    }
+
     // MARK: - Team (terminal-to-terminal messaging via TeamService)
 
     func teamMembers(in workspaceID: UUID) -> [TerminalSession] {

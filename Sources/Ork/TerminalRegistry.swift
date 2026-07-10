@@ -262,6 +262,7 @@ final class TerminalDropContainer: NSView {
     var onHibernate: (() -> Void)?
     var isTeamMember: (() -> Bool)?
     var onToggleTeam: (() -> Void)?
+    var onRename: (() -> Void)?
 
     init(terminal: LocalProcessTerminalView) {
         super.init(frame: terminal.frame)
@@ -291,12 +292,19 @@ final class TerminalDropContainer: NSView {
         team.target = self
         team.image = NSImage(systemSymbolName: inTeam ? "person.2.slash" : "person.2", accessibilityDescription: nil)
         menu.addItem(team)
+        if onRename != nil {
+            let rename = NSMenuItem(title: "Rename Agent…", action: #selector(renameAction), keyEquivalent: "")
+            rename.target = self
+            rename.image = NSImage(systemSymbolName: "pencil", accessibilityDescription: nil)
+            menu.addItem(rename)
+        }
         return menu
     }
 
     @objc private func sleepAction() { onSleep?() }
     @objc private func hibernateAction() { onHibernate?() }
     @objc private func teamAction() { onToggleTeam?() }
+    @objc private func renameAction() { onRename?() }
 
     override func draggingEntered(_ sender: NSDraggingInfo) -> NSDragOperation { .copy }
 
