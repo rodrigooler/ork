@@ -105,4 +105,9 @@ struct DBConnection: Identifiable, Codable, Hashable {
     var kind: Kind
     var host: String
     var port: Int
+    // Console credentials; optional so pre-console state.json still decodes.
+    // Stored plaintext in state.json, same trust model as ~/.pgpass.
+    var username: String?
+    var password: String?
+    var database: String?
 }

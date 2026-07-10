@@ -11,7 +11,11 @@ struct DataPane: View {
     @State private var kind: DBConnection.Kind = .postgres
     @State private var host = "localhost"
     @State private var port = "5432"
+    @State private var username = ""
+    @State private var password = ""
+    @State private var database = ""
     @State private var status: [UUID: ProbeStatus] = [:]
+    @State private var consoleID: UUID?
 
     private var connections: [DBConnection] {
         store.connections(for: workspace.id)
@@ -25,7 +29,14 @@ struct DataPane: View {
             } else {
                 ScrollView {
                     LazyVStack(spacing: 10) {
-                        ForEach(connections) { connectionCard($0) }
+                        ForEach(connections) { connection in
+                            VStack(spacing: 0) {
+                                connectionCard(connection)
+                                if consoleID == connection.id {
+                                    QueryConsole(connection: connection)
+                                }
+                            }
+                        }
                     }
                 }
                 .animation(OrkMotion.layout, value: connections.map(\.id))
@@ -37,23 +48,35 @@ struct DataPane: View {
     }
 
     private var addForm: some View {
-        HStack(spacing: 8) {
-            Picker("", selection: $kind) {
-                ForEach(DBConnection.Kind.allCases) { Text($0.label).tag($0) }
+        VStack(spacing: 8) {
+            HStack(spacing: 8) {
+                Picker("", selection: $kind) {
+                    ForEach(DBConnection.Kind.allCases) { Text($0.label).tag($0) }
+                }
+                .labelsHidden()
+                .frame(width: 120)
+                TextField("name", text: $name).orkField().frame(width: 150)
+                TextField("host", text: $host).orkField()
+                TextField("port", text: $port).orkField().frame(width: 70)
+                Button {
+                    addConnection()
+                } label: {
+                    Label("Add", systemImage: "plus")
+                        .font(.system(size: 11, weight: .medium))
+                }
+                .buttonStyle(.borderedProminent)
+                .tint(OrkTheme.clay)
             }
-            .labelsHidden()
-            .frame(width: 120)
-            TextField("name", text: $name).orkField().frame(width: 150)
-            TextField("host", text: $host).orkField()
-            TextField("port", text: $port).orkField().frame(width: 70)
-            Button {
-                addConnection()
-            } label: {
-                Label("Add", systemImage: "plus")
-                    .font(.system(size: 11, weight: .medium))
+            HStack(spacing: 8) {
+                if kind == .postgres {
+                    TextField("user", text: $username).orkField().frame(width: 120)
+                    SecureField("password", text: $password).orkField().frame(width: 120)
+                    TextField("database", text: $database).orkField().frame(width: 140)
+                } else {
+                    SecureField("password (optional)", text: $password).orkField().frame(width: 180)
+                }
+                Spacer()
             }
-            .buttonStyle(.borderedProminent)
-            .tint(OrkTheme.clay)
         }
         .padding(10)
         .orkCard()
@@ -70,10 +93,14 @@ struct DataPane: View {
             name: name.isEmpty ? "\(kind.rawValue)-local" : name,
             kind: kind,
             host: host,
-            port: portNumber
+            port: portNumber,
+            username: username.isEmpty ? nil : username,
+            password: password.isEmpty ? nil : password,
+            database: database.isEmpty ? nil : database
         )
         store.addConnection(connection)
         name = ""
+        password = ""
     }
 
     private func connectionCard(_ connection: DBConnection) -> some View {
@@ -94,6 +121,14 @@ struct DataPane: View {
             }
             Spacer()
             statusBadge(for: connection)
+            Button("Console") {
+                withAnimation(OrkMotion.state) {
+                    consoleID = consoleID == connection.id ? nil : connection.id
+                }
+            }
+            .buttonStyle(.bordered)
+            .controlSize(.small)
+            .font(.system(size: 10))
             Button("Probe") {
                 probe(connection)
             }
@@ -144,7 +179,7 @@ struct DataPane: View {
             Text("No endpoints for this project")
                 .font(OrkFont.display(12.5))
                 .foregroundStyle(OrkTheme.cream)
-            Text("Add the Postgres or Redis this project talks to. Query consoles land in a next release.")
+            Text("Add the Postgres or Redis this project talks to, then open its console to run queries.")
                 .font(.system(size: 11))
                 .foregroundStyle(OrkTheme.stone)
         }
@@ -160,6 +195,131 @@ struct DataPane: View {
             await MainActor.run {
                 status[connection.id] = ok ? .reachable : .unreachable
             }
+        }
+    }
+}
+
+/// SQL editor or Redis command line against one endpoint, results rendered
+/// as a monospaced grid the way psql and redis-cli would.
+struct QueryConsole: View {
+    let connection: DBConnection
+
+    @State private var input = ""
+    @State private var running = false
+    @State private var output: [String] = []
+    @State private var note = ""
+    @State private var failed = false
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 8) {
+            if connection.kind == .postgres {
+                TextEditor(text: $input)
+                    .font(.system(size: 11.5, design: .monospaced))
+                    .scrollContentBackground(.hidden)
+                    .frame(height: 72)
+                    .padding(6)
+                    .background(OrkTheme.well)
+                    .clipShape(RoundedRectangle(cornerRadius: 7))
+                HStack(spacing: 8) {
+                    Button(running ? "Running…" : "Run") { run() }
+                        .buttonStyle(.borderedProminent)
+                        .tint(OrkTheme.clay)
+                        .controlSize(.small)
+                        .disabled(running || input.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty)
+                        .keyboardShortcut(.return, modifiers: .command)
+                    Text("Cmd+Return runs. Results cap at \(QueryService.rowCap) rows.")
+                        .font(.system(size: 9.5))
+                        .foregroundStyle(OrkTheme.faint)
+                }
+            } else {
+                HStack(spacing: 8) {
+                    TextField("GET mykey", text: $input)
+                        .orkField()
+                        .font(.system(size: 11.5, design: .monospaced))
+                        .onSubmit { run() }
+                    Button(running ? "…" : "Send") { run() }
+                        .buttonStyle(.borderedProminent)
+                        .tint(OrkTheme.clay)
+                        .controlSize(.small)
+                        .disabled(running || input.trimmingCharacters(in: .whitespaces).isEmpty)
+                }
+            }
+            if !note.isEmpty {
+                Text(note)
+                    .font(.system(size: 10))
+                    .foregroundStyle(failed ? OrkTheme.brick : OrkTheme.faint)
+                    .textSelection(.enabled)
+            }
+            if !output.isEmpty {
+                ScrollView([.vertical, .horizontal]) {
+                    LazyVStack(alignment: .leading, spacing: 0) {
+                        ForEach(output.indices, id: \.self) { index in
+                            Text(output[index])
+                                .font(.system(size: 10.5, design: .monospaced))
+                                .foregroundStyle(index == 0 && connection.kind == .postgres ? OrkTheme.cream : OrkTheme.stone)
+                        }
+                    }
+                    .padding(8)
+                }
+                .frame(maxHeight: 260)
+                .background(OrkTheme.well)
+                .clipShape(RoundedRectangle(cornerRadius: 7))
+            }
+        }
+        .padding(10)
+        .orkCard(radius: 8, fill: OrkTheme.overlay)
+        .padding(.top, 4)
+        .transition(.opacity)
+    }
+
+    private func run() {
+        let query = input.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !query.isEmpty, !running else { return }
+        running = true
+        failed = false
+        note = ""
+        output = []
+        let connection = connection
+        Task {
+            if connection.kind == .postgres {
+                switch await QueryService.postgres(connection, sql: query) {
+                case .success(let table):
+                    output = Self.grid(table)
+                    note = table.note
+                case .failure(let error):
+                    failed = true
+                    note = String(describing: error)
+                }
+            } else {
+                switch await QueryService.redis(connection, command: query) {
+                case .success(let reply):
+                    output = reply.split(separator: "\n", omittingEmptySubsequences: false).map(String.init)
+                case .failure(let error):
+                    failed = true
+                    note = String(describing: error)
+                }
+            }
+            running = false
+        }
+    }
+
+    /// Pads cells into aligned monospaced lines, psql style.
+    static func grid(_ table: QueryService.Table, cellCap: Int = 60) -> [String] {
+        guard !table.columns.isEmpty else { return [] }
+        let all = [table.columns] + table.rows
+        let clipped = all.map { row in
+            row.map { $0.count > cellCap ? String($0.prefix(cellCap - 1)) + "…" : $0 }
+        }
+        var widths = [Int](repeating: 0, count: table.columns.count)
+        for row in clipped {
+            for (index, cell) in row.enumerated() where index < widths.count {
+                widths[index] = max(widths[index], cell.count)
+            }
+        }
+        return clipped.map { row in
+            row.enumerated()
+                .map { index, cell in cell.padding(toLength: widths[index], withPad: " ", startingAt: 0) }
+                .joined(separator: "  ")
         }
     }
 }
