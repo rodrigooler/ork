@@ -16,6 +16,8 @@ Priorities for ork, in order. Items move up or down based on real usage; open an
 - Single main window: a duplicate window stole the terminal views (dead scroll, blank cards).
 - Configure a running agent from the context menu: model, effort and a standing role (persona).
 - Notch glance 2.0: wider bar with a live event ticker and ember gradient, expanded panel with session rows and a timeline.
+- Grok CLI as a built-in agent with session resume.
+- Notch border beam (grok.com/build style traveling ember) and an active/total agent counter.
 - Near-zero idle work: git stat polling pauses while the window is hidden and skips frozen or hibernated sessions; pane refresh loops pause when occluded.
 
 ## Later
