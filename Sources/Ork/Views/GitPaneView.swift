@@ -3,7 +3,13 @@ import SwiftUI
 /// GitKraken-style history for the workspace repo: commit graph with lanes,
 /// branch badges, ork worktree stats, and a diff panel for the selected commit.
 struct GitPane: View {
+    @EnvironmentObject private var store: AppStore
     let workspace: Workspace
+
+    private enum Selection: Equatable {
+        case commit(GitService.Commit)
+        case worktree(GitService.Worktree)
+    }
 
     private struct Snapshot {
         var rows: [GitGraph.Row] = []
@@ -16,10 +22,14 @@ struct GitPane: View {
     }
 
     @State private var snapshot = Snapshot()
-    @State private var selected: GitService.Commit?
+    @State private var selection: Selection?
     @State private var files: [GitService.FileChange] = []
     @State private var selectedFile: GitService.FileChange?
     @State private var patch: [PatchLine] = []
+    @State private var confirmMerge = false
+    @State private var confirmPrune = false
+    @State private var actionBusy = false
+    @State private var actionResult: (ok: Bool, text: String)?
 
     private let rowHeight: CGFloat = 26
     private let laneWidth: CGFloat = 13
@@ -45,9 +55,10 @@ struct GitPane: View {
         }
         .background(OrkTheme.ink)
         .task(id: workspace.id) {
-            selected = nil
+            selection = nil
             files = []
             patch = []
+            actionResult = nil
             while !Task.isCancelled {
                 await reload()
                 try? await Task.sleep(nanoseconds: 15_000_000_000)
@@ -91,32 +102,97 @@ struct GitPane: View {
     }
 
     private func select(_ commit: GitService.Commit) {
-        selected = commit
+        selection = .commit(commit)
         files = []
         selectedFile = nil
         patch = []
+        actionResult = nil
         let repo = workspace.path
         Task.detached(priority: .userInitiated) {
             let changed = GitService.changedFiles(repo: repo, sha: commit.sha)
             await MainActor.run {
-                guard selected?.sha == commit.sha else { return }
+                guard selection == .commit(commit) else { return }
                 files = changed
-                if let first = changed.first { selectFile(first, of: commit) }
+                if let first = changed.first { selectFile(first) }
             }
         }
     }
 
-    private func selectFile(_ file: GitService.FileChange, of commit: GitService.Commit) {
+    private func select(_ worktree: GitService.Worktree) {
+        selection = .worktree(worktree)
+        files = []
+        selectedFile = nil
+        patch = []
+        actionResult = nil
+        guard let base = snapshot.defaultBranch else { return }
+        Task.detached(priority: .userInitiated) {
+            let changed = GitService.worktreeDiffFiles(dir: worktree.path, base: base)
+            await MainActor.run {
+                guard selection == .worktree(worktree) else { return }
+                files = changed
+                if let first = changed.first { selectFile(first) }
+            }
+        }
+    }
+
+    private func selectFile(_ file: GitService.FileChange) {
+        guard let current = selection else { return }
         selectedFile = file
         patch = []
         let repo = workspace.path
+        let base = snapshot.defaultBranch ?? "HEAD"
         Task.detached(priority: .userInitiated) {
-            let text = GitService.patch(repo: repo, sha: commit.sha, file: file.path)
+            let text: String
+            switch current {
+            case .commit(let commit):
+                text = GitService.patch(repo: repo, sha: commit.sha, file: file.path)
+            case .worktree(let worktree):
+                text = GitService.worktreeDiffPatch(dir: worktree.path, base: base, file: file.path)
+            }
             let lines = PatchLine.parse(text)
             await MainActor.run {
-                guard selected?.sha == commit.sha, selectedFile?.path == file.path else { return }
+                guard selection == current, selectedFile?.path == file.path else { return }
                 patch = lines
             }
+        }
+    }
+
+    // MARK: - Janitor actions
+
+    private func hasLiveSession(_ worktree: GitService.Worktree) -> Bool {
+        store.sessions.contains { !$0.exited && $0.directory == worktree.path }
+    }
+
+    private func merge(_ worktree: GitService.Worktree) {
+        actionBusy = true
+        actionResult = nil
+        let repo = workspace.path
+        let base = snapshot.defaultBranch ?? "base"
+        Task {
+            let result = await Task.detached(priority: .userInitiated) {
+                GitService.merge(repo: repo, branch: worktree.branch)
+            }.value
+            actionBusy = false
+            actionResult = result.ok
+                ? (true, "Merged into \(base).")
+                : (false, String(result.output.trimmingCharacters(in: .whitespacesAndNewlines).suffix(300)))
+            await reload()
+        }
+    }
+
+    private func prune(_ worktree: GitService.Worktree) {
+        actionBusy = true
+        actionResult = nil
+        let repo = workspace.path
+        Task {
+            await Task.detached(priority: .userInitiated) {
+                WorktreeService.remove(repo: repo, worktreePath: worktree.path, branch: worktree.branch)
+            }.value
+            actionBusy = false
+            selection = nil
+            files = []
+            patch = []
+            await reload()
         }
     }
 
@@ -127,18 +203,23 @@ struct GitPane: View {
             HStack(spacing: 8) {
                 ForEach(snapshot.worktrees.filter { !$0.isMain }, id: \.path) { worktree in
                     let stats = snapshot.worktreeStats[worktree.path] ?? GitService.Stats()
-                    HStack(spacing: 6) {
-                        Image(systemName: "arrow.triangle.branch")
-                            .font(.system(size: 9))
-                            .foregroundStyle(branchTint(worktree.branch))
-                        Text(worktree.branch)
-                            .font(.system(size: 10.5, weight: .medium, design: .monospaced))
-                            .foregroundStyle(OrkTheme.cream)
-                        statsLabel(stats)
+                    Button {
+                        select(worktree)
+                    } label: {
+                        HStack(spacing: 6) {
+                            Image(systemName: "arrow.triangle.branch")
+                                .font(.system(size: 9))
+                                .foregroundStyle(branchTint(worktree.branch))
+                            Text(worktree.branch)
+                                .font(.system(size: 10.5, weight: .medium, design: .monospaced))
+                                .foregroundStyle(OrkTheme.cream)
+                            statsLabel(stats)
+                        }
+                        .padding(.horizontal, 9)
+                        .padding(.vertical, 5)
+                        .orkCard(radius: 7, fill: selection == .worktree(worktree) ? OrkTheme.overlay : OrkTheme.raised)
                     }
-                    .padding(.horizontal, 9)
-                    .padding(.vertical, 5)
-                    .orkCard(radius: 7)
+                    .buttonStyle(.plain)
                     .help(worktree.path)
                 }
                 if snapshot.worktrees.count <= 1 {
@@ -197,7 +278,7 @@ struct GitPane: View {
     }()
 
     private func graphRow(_ row: GitGraph.Row) -> some View {
-        let isSelected = selected?.sha == row.commit.sha
+        let isSelected = selection == .commit(row.commit)
         let branches = snapshot.branchTips[row.commit.sha] ?? []
         let worktreeBranches = Set(snapshot.worktrees.filter { !$0.isMain }.map(\.branch))
         return HStack(spacing: 8) {
@@ -247,7 +328,8 @@ struct GitPane: View {
     // MARK: - Detail
 
     @ViewBuilder private var detail: some View {
-        if let commit = selected {
+        switch selection {
+        case .commit(let commit):
             VStack(alignment: .leading, spacing: 0) {
                 VStack(alignment: .leading, spacing: 4) {
                     Text(commit.subject)
@@ -262,27 +344,93 @@ struct GitPane: View {
                     .foregroundStyle(OrkTheme.faint)
                 }
                 .padding(12)
-                Rectangle().fill(OrkTheme.hairline).frame(height: 1)
-                ScrollView {
-                    LazyVStack(alignment: .leading, spacing: 1) {
-                        ForEach(files) { file in
-                            fileRow(file, of: commit)
-                        }
-                    }
-                    .padding(6)
-                }
-                .frame(maxHeight: 150)
-                Rectangle().fill(OrkTheme.hairline).frame(height: 1)
-                patchView
+                fileListAndPatch
             }
-        } else {
-            emptyState("Select a commit to see its diff")
+        case .worktree(let worktree):
+            worktreeDetail(worktree)
+        case nil:
+            emptyState("Select a commit or a worktree")
         }
     }
 
-    private func fileRow(_ file: GitService.FileChange, of commit: GitService.Commit) -> some View {
+    @ViewBuilder private var fileListAndPatch: some View {
+        Rectangle().fill(OrkTheme.hairline).frame(height: 1)
+        ScrollView {
+            LazyVStack(alignment: .leading, spacing: 1) {
+                ForEach(files) { file in
+                    fileRow(file)
+                }
+            }
+            .padding(6)
+        }
+        .frame(maxHeight: 150)
+        Rectangle().fill(OrkTheme.hairline).frame(height: 1)
+        patchView
+    }
+
+    private func worktreeDetail(_ worktree: GitService.Worktree) -> some View {
+        let base = snapshot.defaultBranch
+        return VStack(alignment: .leading, spacing: 0) {
+            VStack(alignment: .leading, spacing: 6) {
+                HStack(spacing: 8) {
+                    Image(systemName: "arrow.triangle.branch")
+                        .font(.system(size: 11))
+                        .foregroundStyle(branchTint(worktree.branch))
+                    Text(worktree.branch)
+                        .font(.system(size: 12, weight: .semibold, design: .monospaced))
+                        .foregroundStyle(OrkTheme.cream)
+                    if hasLiveSession(worktree) {
+                        Text("live session")
+                            .font(.system(size: 9, weight: .medium))
+                            .foregroundStyle(OrkTheme.moss)
+                    }
+                }
+                Text(worktree.path)
+                    .font(.system(size: 10, design: .monospaced))
+                    .foregroundStyle(OrkTheme.faint)
+                    .lineLimit(1)
+                    .truncationMode(.head)
+                HStack(spacing: 8) {
+                    Button("Merge into \(base ?? "?")") { confirmMerge = true }
+                        .disabled(base == nil || actionBusy)
+                    Button("Prune", role: .destructive) { confirmPrune = true }
+                        .disabled(hasLiveSession(worktree) || actionBusy)
+                        .help(hasLiveSession(worktree)
+                            ? "A session is still running in this worktree"
+                            : "Remove the worktree and delete its branch")
+                    if actionBusy { ProgressView().controlSize(.small) }
+                }
+                .controlSize(.small)
+                if let actionResult {
+                    Text(actionResult.text)
+                        .font(.system(size: 10))
+                        .foregroundStyle(actionResult.ok ? OrkTheme.moss : OrkTheme.brick)
+                        .textSelection(.enabled)
+                }
+                Text("Diff vs \(base ?? "?"), committed and uncommitted")
+                    .font(.system(size: 9.5))
+                    .foregroundStyle(OrkTheme.faint)
+            }
+            .padding(12)
+            fileListAndPatch
+        }
+        .alert("Merge \(worktree.branch) into \(base ?? "?")?", isPresented: $confirmMerge) {
+            Button("Merge") { merge(worktree) }
+            Button("Cancel", role: .cancel) {}
+        } message: {
+            Text("Runs git merge --no-ff in the main worktree. On conflict the merge aborts and the repo stays clean.")
+        }
+        .alert("Prune \(worktree.branch)?", isPresented: $confirmPrune) {
+            Button("Prune", role: .destructive) { prune(worktree) }
+            Button("Cancel", role: .cancel) {}
+        } message: {
+            Text("Removes the worktree directory and deletes the branch. Unmerged work is lost.")
+        }
+    }
+
+    private func fileRow(_ file: GitService.FileChange) -> some View {
         Button {
-            selectFile(file, of: commit)
+            selectFile(file)
         } label: {
             HStack(spacing: 6) {
                 Text(file.path)

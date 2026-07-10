@@ -145,4 +145,49 @@ enum GitService {
     static func patch(repo: String, sha: String, file: String) -> String {
         run(["show", "--format=", sha, "--", file], in: repo).output
     }
+
+    // MARK: - Worktree janitor
+
+    /// Like run, but stderr lands in the output too (merge conflicts, prune errors).
+    static func runMerged(_ args: [String], in repo: String) -> (ok: Bool, output: String) {
+        let process = Process()
+        process.executableURL = URL(fileURLWithPath: "/usr/bin/git")
+        process.arguments = ["-C", repo] + args
+        let pipe = Pipe()
+        process.standardOutput = pipe
+        process.standardError = pipe
+        do { try process.run() } catch { return (false, "") }
+        let data = pipe.fileHandleForReading.readDataToEndOfFile()
+        process.waitUntilExit()
+        return (process.terminationStatus == 0, String(data: data, encoding: .utf8) ?? "")
+    }
+
+    /// Working tree (committed plus uncommitted) vs the base branch.
+    static func worktreeDiffFiles(dir: String, base: String) -> [FileChange] {
+        let result = run(["diff", "--numstat", base], in: dir)
+        guard result.ok else { return [] }
+        return result.output.split(separator: "\n").compactMap { line in
+            let cols = line.split(separator: "\t", omittingEmptySubsequences: false)
+            guard cols.count >= 3 else { return nil }
+            return FileChange(
+                path: String(cols[2]),
+                insertions: Int(cols[0]) ?? 0,
+                deletions: Int(cols[1]) ?? 0
+            )
+        }
+    }
+
+    static func worktreeDiffPatch(dir: String, base: String, file: String) -> String {
+        run(["diff", base, "--", file], in: dir).output
+    }
+
+    /// Merges the branch into the checked-out branch of the main worktree,
+    /// aborting on conflict so the repo never stays half-merged.
+    static func merge(repo: String, branch: String) -> (ok: Bool, output: String) {
+        let result = runMerged(["merge", "--no-ff", branch], in: repo)
+        if !result.ok {
+            _ = runMerged(["merge", "--abort"], in: repo)
+        }
+        return result
+    }
 }
