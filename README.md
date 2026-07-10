@@ -48,10 +48,12 @@ Requirements: macOS 14+, Xcode 15+ (any recent Swift toolchain).
 ```sh
 git clone https://github.com/rodrigooler/ork.git
 cd ork
-swift run
+swift run -c release
 ```
 
 Or open `Package.swift` in Xcode and hit Run.
+
+Always run with `-c release`. Terminal emulation parses every byte the agents print; a debug build skips optimization and makes busy TUIs feel sluggish.
 
 Sessions run inside a zsh login shell, so any agent CLI on your shell profile `PATH` (`claude`, `codex`, `opencode`, ...) resolves without configuration.
 

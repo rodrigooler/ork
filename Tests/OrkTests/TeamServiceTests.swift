@@ -32,4 +32,18 @@ final class TeamServiceTests: XCTestCase {
         XCTAssertTrue(briefing.contains("\(name)__TEAMMATE__"))
         XCTAssertTrue(briefing.contains(workspace.id.uuidString))
     }
+
+    func testFirstJoinerBriefsAsCoordinatorLaterOnesReportToThem() {
+        let workspace = Workspace(id: UUID(), name: "acme", path: "/tmp/acme", organizationID: nil)
+        let session = TerminalSession(
+            id: UUID(), workspaceID: workspace.id, agent: .builtin[0], directory: "/tmp/acme", worktreeBranch: nil
+        )
+        let first = TeamService.shared.briefing(for: session, workspace: workspace, teammates: [])
+        XCTAssertTrue(first.contains("COORDINATOR"))
+        XCTAssertTrue(first.contains("## Tasks"))
+
+        let second = TeamService.shared.briefing(for: session, workspace: workspace, teammates: ["claude-1a2b"])
+        XCTAssertFalse(second.contains("COORDINATOR"))
+        XCTAssertTrue(second.contains("Your coordinator is claude-1a2b"))
+    }
 }

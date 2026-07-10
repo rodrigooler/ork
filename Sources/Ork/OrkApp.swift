@@ -54,9 +54,12 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         }
         DispatchQueue.main.async {
             if let window = NSApp.windows.first, let screen = window.screen ?? NSScreen.main {
-                // Non-opaque so the sidebar's behind-window glass can sample the desktop.
-                window.isOpaque = false
-                window.backgroundColor = .clear
+                // Opaque: behind-window vibrancy works per-region regardless
+                // (Finder's sidebar does it), and a non-opaque full-screen
+                // window makes the WindowServer alpha-blend every terminal
+                // repaint against the desktop for nothing.
+                window.isOpaque = true
+                window.backgroundColor = .black
                 window.setFrame(screen.visibleFrame, display: true)
             }
         }

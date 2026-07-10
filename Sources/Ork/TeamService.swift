@@ -46,17 +46,32 @@ final class TeamService {
         return (parts[0], parts[1])
     }
 
+    /// The first member to join coordinates; everyone else reports to them.
+    /// The role text is what makes the team parallelize instead of chatting.
     func briefing(for session: TerminalSession, workspace: Workspace, teammates: [String]) -> String {
         let dir = Self.teamDir(workspace.id).path
         let name = Self.memberName(session)
+        let isCoordinator = teammates.isEmpty
         let mates = teammates.isEmpty ? "none yet" : teammates.joined(separator: ", ")
+        let role = isCoordinator
+            ? """
+            You are the COORDINATOR. When the user gives you a multi-step task: split it into \
+            independent subtasks, write them on the board under '## Tasks' as '- [ ] task — owner', \
+            message each owner their assignment immediately, and start your own share. Do not do \
+            work a teammate could do in parallel. Integrate results as 'done' reports arrive.
+            """
+            : """
+            Your coordinator is \(teammates.first ?? "the first member"). When you get an assignment: \
+            do it right away, tick its box on the board, and message the coordinator 'done: <task>' \
+            with a one-line result. If you are idle, message the coordinator asking for work.
+            """
         return """
         [ork team] You are '\(name)', part of an agent team working on '\(workspace.name)'. \
-        Teammates: \(mates). Shared board (read it before starting a task, append decisions and \
-        status when you finish): "\(dir)/board.md". To message a teammate run: \
-        echo "your text" > "\(dir)/outbox/\(name)__TEAMMATE__$RANDOM.md" \
+        Teammates: \(mates). Shared board (read before starting, append after): "\(dir)/board.md". \
+        To message a teammate run: echo "your text" > "\(dir)/outbox/\(name)__TEAMMATE__$RANDOM.md" \
         replacing TEAMMATE with their name, or with 'all' to broadcast. Incoming messages appear \
-        in your input as [team msg from NAME]. Acknowledge this briefing briefly and wait.
+        in your input as [team msg from NAME]. \(role) Keep team messages to one or two short \
+        sentences. Acknowledge this briefing briefly and wait.
         """
     }
 
@@ -75,6 +90,9 @@ final class TeamService {
 
             Shared context for every agent on this team. Read before starting a task.
             Append under the sections below; never rewrite other agents' entries.
+
+            ## Tasks
+            <!-- coordinator splits work here: - [ ] task — owner -->
 
             ## Decisions
 
