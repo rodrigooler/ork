@@ -60,7 +60,7 @@ struct GitPane: View {
             patch = []
             actionResult = nil
             while !Task.isCancelled {
-                await reload()
+                if AppStore.deckWindowVisible { await reload() }
                 try? await Task.sleep(nanoseconds: 15_000_000_000)
             }
         }

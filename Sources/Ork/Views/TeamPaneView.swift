@@ -11,6 +11,7 @@ struct TeamPane: View {
     @State private var log: [String] = []
     @State private var draft = ""
     @State private var recipient = "all"
+    @State private var lastStamps: [Date?] = []
 
     private var members: [TerminalSession] {
         store.teamMembers(in: workspace.id)
@@ -35,17 +36,31 @@ struct TeamPane: View {
         }
         .background(OrkTheme.ink)
         .task(id: workspace.id) {
+            lastStamps = []
             while !Task.isCancelled {
-                refresh()
+                if AppStore.deckWindowVisible { await refresh() }
                 try? await Task.sleep(nanoseconds: 3_000_000_000)
             }
         }
     }
 
-    private func refresh() {
-        board = (try? String(contentsOf: TeamService.boardURL(workspace.id), encoding: .utf8)) ?? ""
-        let raw = (try? String(contentsOf: TeamService.logURL(workspace.id), encoding: .utf8)) ?? ""
-        log = raw.split(separator: "\n").suffix(200).map(String.init)
+    /// Each tick costs two stat calls; file contents are read (off the main
+    /// thread) only when a modification date actually moved.
+    private func refresh() async {
+        let boardURL = TeamService.boardURL(workspace.id)
+        let logURL = TeamService.logURL(workspace.id)
+        let stamps = [boardURL, logURL].map {
+            (try? FileManager.default.attributesOfItem(atPath: $0.path)[.modificationDate]) as? Date
+        }
+        guard stamps != lastStamps else { return }
+        lastStamps = stamps
+        let loaded = await Task.detached(priority: .utility) { () -> (String, [String]) in
+            let board = (try? String(contentsOf: boardURL, encoding: .utf8)) ?? ""
+            let raw = (try? String(contentsOf: logURL, encoding: .utf8)) ?? ""
+            return (board, raw.split(separator: "\n").suffix(200).map(String.init))
+        }.value
+        board = loaded.0
+        log = loaded.1
     }
 
     private var emptyState: some View {

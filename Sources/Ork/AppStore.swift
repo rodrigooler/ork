@@ -105,6 +105,17 @@ final class AppStore: ObservableObject {
         statsTimer = Timer.scheduledTimer(withTimeInterval: 10, repeats: true) { [weak self] _ in
             self?.pollStats()
         }
+        // Tolerance lets the system coalesce timer wakeups (App Nap friendly).
+        freezeTimer?.tolerance = 5
+        statsTimer?.tolerance = 2
+        // Stats pause while the deck is hidden; refresh the moment it is back.
+        NotificationCenter.default.addObserver(
+            forName: NSWindow.didChangeOcclusionStateNotification, object: nil, queue: .main
+        ) { [weak self] note in
+            guard let window = note.object as? NSWindow, !(window is NSPanel),
+                  window.occlusionState.contains(.visible) else { return }
+            self?.pollStats()
+        }
         pollStats()
     }
 
@@ -376,17 +387,24 @@ final class AppStore: ObservableObject {
 
     // MARK: - Git stats (card chips)
 
+    /// The chips only render in the main window, so polling while it is
+    /// closed, minimized or fully covered spawns git for nobody. Frozen and
+    /// hibernated sessions cannot touch their worktree; they keep their last
+    /// stats instead of costing three git spawns per tick.
     private func pollStats() {
-        guard !statsPollInFlight else { return }
-        let targets = sessions.compactMap { session -> (id: UUID, dir: String, repo: String)? in
-            guard !session.exited, session.worktreeBranch != nil,
-                  let ws = workspace(id: session.workspaceID) else { return nil }
-            return (session.id, session.directory, ws.path)
-        }
-        guard !targets.isEmpty else {
+        guard !statsPollInFlight, Self.deckWindowVisible else { return }
+        let eligible = sessions.filter { !$0.exited && $0.worktreeBranch != nil }
+        guard !eligible.isEmpty else {
             if !sessionStats.isEmpty { sessionStats = [:] }
             return
         }
+        let liveIDs = Set(eligible.map(\.id))
+        let targets = eligible.compactMap { session -> (id: UUID, dir: String, repo: String)? in
+            guard !session.hibernated, !frozenSessionIDs.contains(session.id),
+                  let ws = workspace(id: session.workspaceID) else { return nil }
+            return (session.id, session.directory, ws.path)
+        }
+        guard !targets.isEmpty else { return }
         statsPollInFlight = true
         Task.detached(priority: .utility) { [weak self] in
             var fresh: [UUID: GitService.Stats] = [:]
@@ -402,10 +420,20 @@ final class AppStore: ObservableObject {
                 fresh[target.id] = GitService.stats(worktree: target.dir, baseBranch: base)
             }
             DispatchQueue.main.async {
-                self?.sessionStats = fresh
-                self?.statsPollInFlight = false
+                guard let self else { return }
+                self.sessionStats = self.sessionStats
+                    .filter { liveIDs.contains($0.key) }
+                    .merging(fresh) { _, new in new }
+                self.statsPollInFlight = false
             }
         }
+    }
+
+    /// True while any regular window (not the notch panel or a popover) is
+    /// actually on screen. Pane refresh loops share it: polling a window
+    /// nobody can see is wasted work.
+    static var deckWindowVisible: Bool {
+        NSApp.windows.contains { !($0 is NSPanel) && $0.isVisible && $0.occlusionState.contains(.visible) }
     }
 
     // MARK: - Team (terminal-to-terminal messaging via TeamService)
