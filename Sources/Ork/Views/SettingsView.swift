@@ -10,8 +10,38 @@ struct SettingsView: View {
                 .tabItem { Label("Terminal", systemImage: "terminal") }
             BehaviorPane()
                 .tabItem { Label("Behavior", systemImage: "slider.horizontal.3") }
+            AgentsPane()
+                .tabItem { Label("Agents", systemImage: "person.2") }
         }
         .frame(width: 460)
+    }
+}
+
+private struct AgentsPane: View {
+    @State private var customCount = AgentProfile.custom.count
+
+    var body: some View {
+        Form {
+            LabeledContent("Custom agents", value: "\(customCount)")
+            HStack {
+                Button("Edit agents.json") {
+                    NSWorkspace.shared.open(AgentConfig.url)
+                }
+                Button("Reload") {
+                    AgentProfile.reloadCustom()
+                    customCount = AgentProfile.custom.count
+                }
+            }
+            Text("""
+            Each entry needs slug, name and command. Optional: symbol (SF Symbol name), \
+            tint ("#RRGGBB") and resumeCommand. A custom slug overrides the builtin agent. \
+            Example:
+            [{"slug": "aider", "name": "Aider", "command": "aider", "tint": "#7FA3C4"}]
+            """)
+            .font(.system(size: 11))
+            .foregroundStyle(.secondary)
+        }
+        .padding(20)
     }
 }
 

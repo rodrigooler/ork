@@ -100,7 +100,7 @@ struct WorkspaceView: View {
                 .help(isGitRepo ? "Run each session in an isolated git worktree" : "Not a git repository")
 
                 Menu {
-                    ForEach(AgentProfile.builtin) { agent in
+                    ForEach(AgentProfile.all) { agent in
                         Button {
                             spawn(agent)
                         } label: {
@@ -236,7 +236,7 @@ struct WorkspaceView: View {
             }
             .riseIn()
             HStack(spacing: 10) {
-                ForEach(Array(AgentProfile.builtin.enumerated()), id: \.element.id) { index, agent in
+                ForEach(Array(AgentProfile.all.enumerated()), id: \.element.id) { index, agent in
                     AgentTile(agent: agent, delay: 0.05 + Double(index) * 0.04) {
                         spawn(agent)
                     }

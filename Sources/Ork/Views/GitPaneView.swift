@@ -236,7 +236,7 @@ struct GitPane: View {
     private func branchTint(_ branch: String) -> Color {
         if branch.hasPrefix("ork/") {
             let slug = branch.dropFirst(4).split(separator: "-").first.map(String.init) ?? ""
-            if let agent = AgentProfile.builtin.first(where: { $0.slug == slug }) {
+            if let agent = AgentProfile.all.first(where: { $0.slug == slug }) {
                 return agent.tint
             }
         }

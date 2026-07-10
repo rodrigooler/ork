@@ -7,6 +7,8 @@ struct AgentProfile: Identifiable, Codable, Hashable {
     let command: String
     let symbol: String
     let tintHex: UInt32
+    /// Resume command from agents.json; optional so old state.json still decodes.
+    var configResume: String?
 
     var tint: Color { Color(hex: tintHex) }
 
@@ -14,6 +16,7 @@ struct AgentProfile: Identifiable, Codable, Hashable {
     /// falling back to a fresh start when there is nothing to continue.
     /// Only flags verified against the installed CLIs; others relaunch plain.
     var resumeCommand: String? {
+        if let configResume { return configResume }
         switch slug {
         case "claude": return "(claude --continue || claude)"
         case "opencode": return "(opencode --continue || opencode)"
@@ -28,6 +31,18 @@ struct AgentProfile: Identifiable, Codable, Hashable {
         AgentProfile(slug: "gemini", name: "Gemini CLI", command: "gemini", symbol: "diamond", tintHex: 0xA08FC9),
         AgentProfile(slug: "shell", name: "Shell", command: "exec zsh", symbol: "terminal", tintHex: 0xC7A566),
     ]
+
+    private(set) static var custom: [AgentProfile] = AgentConfig.load()
+
+    /// Builtins plus agents.json entries; a custom slug overrides its builtin.
+    static var all: [AgentProfile] {
+        let customSlugs = Set(custom.map(\.slug))
+        return builtin.filter { !customSlugs.contains($0.slug) } + custom
+    }
+
+    static func reloadCustom() {
+        custom = AgentConfig.load()
+    }
 }
 
 struct Organization: Identifiable, Codable, Hashable {
