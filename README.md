@@ -25,7 +25,7 @@ Terminal agents multiplied, and running four of them across ad hoc terminal tabs
 - **Agent teams**: join terminals into a team; Ork routes terminal-to-terminal messages, a shared `board.md` holds common context, and a team pane shows members, board and message log. Message shapes, a char cap and per-recipient batching keep the token spend low.
 - **Worktree isolation**: each session runs on its own branch in a dedicated worktree, created with plain `git worktree add`.
 - **Git pane**: commit graph, worktree strip and diff viewer; merge a worktree into its base branch or prune it without leaving the app. Session cards show uncommitted diff stats and commits ahead.
-- **Terminal grid and focus mode**: all sessions side by side; isolate one terminal over a dimmed backdrop, live PTY intact.
+- **Terminal grid, stack and focus mode**: all sessions side by side, or a tab strip with one terminal expanded and the rest collapsed but alive; isolate one terminal over a dimmed backdrop, live PTY intact.
 - **Flow view**: workspace and agents as a connected topology; click a node to focus its terminal.
 - **Session persistence**: open sessions survive a relaunch, reattach to the same worktree and resume the agent conversation where the CLI supports it.
 - **Idle freeze, sleep and hibernate**: a session idling for ten minutes is suspended with SIGSTOP and stops burning CPU; any interaction wakes it. Right-click a terminal to sleep it manually, or hibernate it to free the CLI's memory and resume the conversation later.

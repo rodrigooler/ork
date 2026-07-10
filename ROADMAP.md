@@ -11,6 +11,8 @@ Priorities for ork, in order. Items move up or down based on real usage; open an
 
 - Team message box: talk to the agent team from the team pane as 'user'.
 - Rename agents: give a terminal a human name from the context menu; teams address it by that name.
+- Stack layout: tab strip on top, one terminal expanded, the rest collapsed but alive.
+- Single main window: a duplicate window stole the terminal views (dead scroll, blank cards).
 - Near-zero idle work: git stat polling pauses while the window is hidden and skips frozen or hibernated sessions; pane refresh loops pause when occluded.
 
 ## Later

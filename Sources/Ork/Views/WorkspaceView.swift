@@ -4,11 +4,12 @@ struct WorkspaceView: View {
     @EnvironmentObject private var store: AppStore
     let workspace: Workspace
 
-    enum LayoutMode { case grid, flow }
+    enum LayoutMode { case grid, stack, flow }
     enum Pane { case terminals, data, git, team }
 
     @State private var pane: Pane = .terminals
     @State private var layout: LayoutMode = .grid
+    @State private var stackSelectedID: UUID?
     @State private var useWorktree = OrkSettings.shared.defaultWorktree
     @State private var isGitRepo = false
     @State private var worktreeCount = 0
@@ -29,11 +30,17 @@ struct WorkspaceView: View {
                 if sessions.isEmpty {
                     emptyState
                         .background(DotGrid())
-                } else if layout == .grid {
-                    grid
-                        .background(DotGrid().opacity(0.55))
                 } else {
-                    FlowView(workspace: workspace, sessions: sessions)
+                    switch layout {
+                    case .grid:
+                        grid
+                            .background(DotGrid().opacity(0.55))
+                    case .stack:
+                        stack
+                            .background(DotGrid().opacity(0.55))
+                    case .flow:
+                        FlowView(workspace: workspace, sessions: sessions)
+                    }
                 }
             case .data:
                 DataPane(workspace: workspace)
@@ -160,6 +167,9 @@ struct WorkspaceView: View {
             switcherButton(label: nil, symbol: "square.grid.2x2", isOn: layout == .grid, ns: layoutNamespace) {
                 withAnimation(OrkMotion.state) { layout = .grid }
             }
+            switcherButton(label: nil, symbol: "rectangle.topthird.inset.filled", isOn: layout == .stack, ns: layoutNamespace) {
+                withAnimation(OrkMotion.state) { layout = .stack }
+            }
             switcherButton(label: nil, symbol: "point.3.connected.trianglepath.dotted", isOn: layout == .flow, ns: layoutNamespace) {
                 withAnimation(OrkMotion.state) { layout = .flow }
             }
@@ -226,6 +236,36 @@ struct WorkspaceView: View {
         .animation(OrkMotion.layout, value: sessions.map(\.id))
     }
 
+    // MARK: - Stack (tabs on top, one terminal expanded)
+
+    /// Falls back to the first session when the selected one closes.
+    private var currentStackID: UUID? {
+        sessions.contains { $0.id == stackSelectedID } ? stackSelectedID : sessions.first?.id
+    }
+
+    /// Collapsed sessions stay alive in TerminalRegistry without rendering;
+    /// only the selected one mounts its surface, so an N-session workspace
+    /// draws a single terminal.
+    private var stack: some View {
+        VStack(spacing: 10) {
+            ScrollView(.horizontal, showsIndicators: false) {
+                HStack(spacing: 8) {
+                    ForEach(sessions) { session in
+                        SessionTab(session: session, selected: session.id == currentStackID) {
+                            withAnimation(OrkMotion.state) { stackSelectedID = session.id }
+                        }
+                    }
+                }
+            }
+            if let selected = sessions.first(where: { $0.id == currentStackID }) {
+                SessionCard(session: selected)
+                    .id(selected.id)
+                    .transition(.opacity)
+            }
+        }
+        .padding(14)
+    }
+
     private var emptyState: some View {
         VStack(spacing: 20) {
             VStack(spacing: 10) {
@@ -282,6 +322,75 @@ struct Chip: View {
             .background(tint.opacity(0.10))
             .clipShape(Capsule())
             .overlay(Capsule().strokeBorder(tint.opacity(0.25), lineWidth: 1))
+    }
+}
+
+/// Compact live status for one session in the stack strip; click to expand.
+/// The PTY keeps running while collapsed, this is just its heartbeat.
+struct SessionTab: View {
+    @EnvironmentObject private var store: AppStore
+    let session: TerminalSession
+    let selected: Bool
+    let action: () -> Void
+
+    private var isFrozen: Bool { store.frozenSessionIDs.contains(session.id) }
+
+    var body: some View {
+        Button(action: action) {
+            HStack(spacing: 6) {
+                if session.exited {
+                    Circle().fill(OrkTheme.brick).frame(width: 5, height: 5)
+                } else {
+                    PulsingDot(
+                        color: isFrozen || session.hibernated ? OrkTheme.faint : OrkTheme.moss,
+                        size: 5,
+                        active: !isFrozen && !session.hibernated
+                    )
+                }
+                Image(systemName: session.agent.symbol)
+                    .font(.system(size: 9.5))
+                    .foregroundStyle(session.agent.tint)
+                Text(session.customName ?? session.agent.name)
+                    .font(.system(size: 11, weight: selected ? .semibold : .regular))
+                    .foregroundStyle(selected ? OrkTheme.cream : OrkTheme.stone)
+                if session.hibernated {
+                    Image(systemName: "moon.zzz")
+                        .font(.system(size: 8))
+                        .foregroundStyle(OrkTheme.faint)
+                } else if isFrozen {
+                    Image(systemName: "snowflake")
+                        .font(.system(size: 8))
+                        .foregroundStyle(OrkTheme.faint)
+                }
+                if let stats = store.sessionStats[session.id], !stats.isClean || stats.ahead > 0 {
+                    HStack(spacing: 3) {
+                        if !stats.isClean {
+                            Text("+\(stats.insertions)").foregroundStyle(OrkTheme.moss)
+                            Text("−\(stats.deletions)").foregroundStyle(OrkTheme.brick)
+                        }
+                        if stats.ahead > 0 {
+                            Text("↑\(stats.ahead)").foregroundStyle(OrkTheme.clay)
+                        }
+                    }
+                    .font(.system(size: 8.5, design: .monospaced))
+                }
+                if store.teamSessionIDs.contains(session.id) {
+                    Image(systemName: "person.2.fill")
+                        .font(.system(size: 7.5))
+                        .foregroundStyle(OrkTheme.clay)
+                }
+            }
+            .padding(.horizontal, 10)
+            .padding(.vertical, 6)
+            .background(selected ? OrkTheme.raised : OrkTheme.well)
+            .clipShape(RoundedRectangle(cornerRadius: 8, style: .continuous))
+            .overlay(
+                RoundedRectangle(cornerRadius: 8, style: .continuous)
+                    .strokeBorder(selected ? session.agent.tint.opacity(0.55) : OrkTheme.hairline, lineWidth: 1)
+            )
+        }
+        .buttonStyle(.plain)
+        .help(session.directory)
     }
 }
 
