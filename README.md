@@ -30,6 +30,8 @@ Terminal agents multiplied, and running four of them across ad hoc terminal tabs
 - **Data pane per project**: register the Postgres and Redis each project talks to, with a live reachability probe.
 - **Usage dashboard**: token usage from your Claude Code transcripts, 14 day chart.
 - **Menu bar companion and notch glance**: running agents, today's tokens and exit notifications in the menu bar; hover the MacBook notch for a quick panel.
+- **Agent-friendly input**: Shift+Enter inserts a newline, Ctrl+Backspace deletes a word, Cmd+Backspace kills the line; paste (Ctrl+V) or drop an image and its path is typed into the prompt, ready for the agent to read.
+- **Settings** (Cmd+,): dark or light theme, terminal font and size, worktree default, idle freeze, notifications.
 
 ## Install
 

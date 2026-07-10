@@ -4,24 +4,39 @@ import SwiftUI
 struct OrkApp: App {
     @NSApplicationDelegateAdaptor(AppDelegate.self) private var appDelegate
     @StateObject private var store = AppStore()
+    @StateObject private var settings = OrkSettings.shared
 
     init() {
         // Before any scene body renders, or SwiftUI resolves the custom font to a fallback.
         OrkMark.registerFonts()
     }
 
+    private var colorScheme: ColorScheme {
+        settings.appearance == .dark ? .dark : .light
+    }
+
     var body: some Scene {
         WindowGroup(id: "main") {
             RootView()
                 .environmentObject(store)
-                .preferredColorScheme(.dark)
+                // Theme lives in OrkTheme statics: re-key the tree so a mode
+                // change re-reads every color. Terminals survive in the registry.
+                .id(settings.appearance)
+                .preferredColorScheme(colorScheme)
                 .frame(minWidth: 1080, minHeight: 680)
         }
         .windowStyle(.hiddenTitleBar)
 
+        Settings {
+            SettingsView()
+                .environmentObject(settings)
+                .preferredColorScheme(colorScheme)
+        }
+
         MenuBarExtra {
             MenuBarPanel()
                 .environmentObject(store)
+                .id(settings.appearance)
         } label: {
             Image(nsImage: OrkMark.menuBar)
         }

@@ -124,7 +124,7 @@ struct SessionCard: View {
             .buttonStyle(.pressable)
             .help("Focus mode: isolate this terminal")
             Button {
-                if session.worktreeBranch != nil && !session.exited {
+                if session.worktreeBranch != nil && !session.exited && OrkSettings.shared.confirmCloseRunning {
                     showCloseConfirm = true
                 } else {
                     store.closeSession(session.id)
@@ -204,18 +204,19 @@ struct TerminalSurface: NSViewRepresentable {
     @EnvironmentObject private var store: AppStore
     let session: TerminalSession
 
-    func makeNSView(context: Context) -> LocalProcessTerminalView {
+    func makeNSView(context: Context) -> TerminalDropContainer {
         let store = store
         let id = session.id
-        return TerminalRegistry.shared.view(
+        let terminal = TerminalRegistry.shared.view(
             for: session,
             resume: store.restoredSessionIDs.contains(session.id),
             onExit: { store.markExited(id) },
             onFocus: { focused in store.setFocus(id, focused: focused) }
         )
+        return TerminalDropContainer(terminal: terminal)
     }
 
-    func updateNSView(_ nsView: LocalProcessTerminalView, context: Context) {
+    func updateNSView(_ nsView: TerminalDropContainer, context: Context) {
         TerminalRegistry.shared.observeWindowIfNeeded(nsView.window)
     }
 }

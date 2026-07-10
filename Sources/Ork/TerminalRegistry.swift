@@ -14,16 +14,43 @@ final class TerminalRegistry: NSObject {
     private var windowObservations: [ObjectIdentifier: NSKeyValueObservation] = [:]
     private var focusedSession: UUID?
 
-    private static let terminalFont: NSFont = {
+    private static func resolveFont() -> NSFont {
+        let size = CGFloat(OrkSettings.shared.terminalFontSize)
+        let picked = OrkSettings.shared.terminalFontName
+        if !picked.isEmpty, let font = NSFont(name: picked, size: size) { return font }
         let candidates = [
             "JetBrainsMono Nerd Font Mono", "JetBrainsMonoNF-Regular", "JetBrains Mono", "JetBrainsMono-Regular",
             "FiraCode Nerd Font Mono", "Fira Code", "SF Mono", "SFMono-Regular", "Menlo",
         ]
         for name in candidates {
-            if let font = NSFont(name: name, size: 12.5) { return font }
+            if let font = NSFont(name: name, size: size) { return font }
         }
-        return .monospacedSystemFont(ofSize: 12.5, weight: .regular)
-    }()
+        return .monospacedSystemFont(ofSize: size, weight: .regular)
+    }
+
+    private static var background: NSColor {
+        OrkTheme.light
+            ? NSColor(srgbRed: 0.914, green: 0.898, blue: 0.859, alpha: 1)
+            : NSColor(srgbRed: 0.118, green: 0.114, blue: 0.106, alpha: 1)
+    }
+
+    private static var foreground: NSColor {
+        OrkTheme.light
+            ? NSColor(srgbRed: 0.173, green: 0.165, blue: 0.149, alpha: 1)
+            : NSColor(srgbRed: 0.925, green: 0.918, blue: 0.89, alpha: 1)
+    }
+
+    private var keyMonitor: Any?
+
+    override init() {
+        super.init()
+        // SwiftTerm seals keyDown (public, not open), so the keys agent TUIs
+        // expect are remapped here, before AppKit dispatches to the view.
+        keyMonitor = NSEvent.addLocalMonitorForEvents(matching: .keyDown) { [weak self] event in
+            guard let self, let terminal = self.terminalOwningFirstResponder(in: event.window) else { return event }
+            return self.remap(event, to: terminal) ? nil : event
+        }
+    }
 
     func view(
         for session: TerminalSession,
@@ -38,9 +65,9 @@ final class TerminalRegistry: NSObject {
 
         let terminal = LocalProcessTerminalView(frame: NSRect(x: 0, y: 0, width: 800, height: 480))
         terminal.processDelegate = self
-        terminal.font = Self.terminalFont
-        terminal.nativeBackgroundColor = NSColor(srgbRed: 0.118, green: 0.114, blue: 0.106, alpha: 1)
-        terminal.nativeForegroundColor = NSColor(srgbRed: 0.925, green: 0.918, blue: 0.89, alpha: 1)
+        terminal.font = Self.resolveFont()
+        terminal.nativeBackgroundColor = Self.background
+        terminal.nativeForegroundColor = Self.foreground
 
         var environment = ProcessInfo.processInfo.environment
         environment["TERM"] = "xterm-256color"
@@ -101,6 +128,73 @@ final class TerminalRegistry: NSObject {
         // ponytail: dropping the last reference closes the PTY master and SIGHUPs the child
     }
 
+    // MARK: - Settings
+
+    /// Live-applies the Settings font to every open terminal.
+    func applyFont() {
+        let font = Self.resolveFont()
+        for view in views.values { view.font = font }
+    }
+
+    /// Live-applies the theme's terminal colors to every open terminal.
+    func applyAppearance() {
+        for view in views.values {
+            view.nativeBackgroundColor = Self.background
+            view.nativeForegroundColor = Self.foreground
+        }
+    }
+
+    // MARK: - Keyboard remaps
+
+    /// Shift+Enter, Ctrl/Cmd+Backspace and image paste: what agent TUIs
+    /// expect from a modern terminal. Returns true when the event is consumed.
+    private func remap(_ event: NSEvent, to terminal: LocalProcessTerminalView) -> Bool {
+        let flags = event.modifierFlags.intersection(.deviceIndependentFlagsMask)
+        switch event.keyCode {
+        case 36 where flags == .shift:
+            // ESC CR: the newline Claude Code's /terminal-setup teaches iTerm and VSCode.
+            terminal.send(txt: "\u{1B}\r")
+            return true
+        case 51 where flags == .control:
+            terminal.send(txt: "\u{17}")  // ^W, delete word
+            return true
+        case 51 where flags == .command:
+            terminal.send(txt: "\u{15}")  // ^U, kill line
+            return true
+        default:
+            break
+        }
+        // Paste with an image on the clipboard: agents take file paths, so the
+        // bitmap lands in a temp PNG and its path is typed. Cmd+V keeps normal
+        // text paste; Ctrl+V with text passes through to the CLI as ^V.
+        if event.charactersIgnoringModifiers == "v", flags == .command || flags == .control,
+           !(flags == .command && NSPasteboard.general.string(forType: .string) != nil),
+           let path = Self.writeImageToTempPNG(from: NSPasteboard.general) {
+            terminal.send(txt: shellQuoted(path) + " ")
+            return true
+        }
+        return false
+    }
+
+    private func terminalOwningFirstResponder(in window: NSWindow?) -> LocalProcessTerminalView? {
+        guard let window, let responder = window.firstResponder else { return nil }
+        return views.values.first { view in
+            responder === view || ((responder as? NSView)?.isDescendant(of: view) ?? false)
+        }
+    }
+
+    /// Saves the pasteboard's bitmap to a temp PNG; nil when there is no image.
+    static func writeImageToTempPNG(from pasteboard: NSPasteboard) -> String? {
+        guard let image = NSImage(pasteboard: pasteboard),
+              let tiff = image.tiffRepresentation,
+              let rep = NSBitmapImageRep(data: tiff),
+              let png = rep.representation(using: .png, properties: [:]) else { return nil }
+        let url = FileManager.default.temporaryDirectory
+            .appendingPathComponent("ork-paste-\(UUID().uuidString.prefix(8)).png")
+        do { try png.write(to: url) } catch { return nil }
+        return url.path
+    }
+
     // MARK: - Focus tracking
 
     /// Hands keyboard focus to a session's terminal (used when entering focus mode).
@@ -143,4 +237,41 @@ extension TerminalRegistry: LocalProcessTerminalViewDelegate {
             self?.exitHandlers[key]?()
         }
     }
+}
+
+/// Hosts a terminal and accepts the drops SwiftTerm ignores: files type their
+/// quoted paths, raw bitmaps land in a temp PNG first (iTerm behavior).
+final class TerminalDropContainer: NSView {
+    private weak var terminal: LocalProcessTerminalView?
+
+    init(terminal: LocalProcessTerminalView) {
+        super.init(frame: terminal.frame)
+        self.terminal = terminal
+        terminal.frame = bounds
+        terminal.autoresizingMask = [.width, .height]
+        addSubview(terminal)
+        registerForDraggedTypes([.fileURL, .tiff, .png])
+    }
+
+    required init?(coder: NSCoder) { nil }
+
+    override func draggingEntered(_ sender: NSDraggingInfo) -> NSDragOperation { .copy }
+
+    override func performDragOperation(_ sender: NSDraggingInfo) -> Bool {
+        guard let terminal else { return false }
+        let pasteboard = sender.draggingPasteboard
+        if let urls = pasteboard.readObjects(forClasses: [NSURL.self]) as? [URL], !urls.isEmpty {
+            terminal.send(txt: urls.map { shellQuoted($0.path) }.joined(separator: " ") + " ")
+            return true
+        }
+        if let path = TerminalRegistry.writeImageToTempPNG(from: pasteboard) {
+            terminal.send(txt: shellQuoted(path) + " ")
+            return true
+        }
+        return false
+    }
+}
+
+func shellQuoted(_ path: String) -> String {
+    "'" + path.replacingOccurrences(of: "'", with: "'\\''") + "'"
 }

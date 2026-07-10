@@ -30,9 +30,11 @@ final class AppStore: ObservableObject {
     /// Below this share of one core, a CLI is repainting its TUI, not working.
     private static let idleCPUFraction = 0.06
     private static let freezePollInterval: TimeInterval = 30
-    /// ORK_FREEZE_AFTER (seconds) overrides the 10 min default for testing.
-    private static let freezeAfter: TimeInterval =
-        ProcessInfo.processInfo.environment["ORK_FREEZE_AFTER"].flatMap(TimeInterval.init) ?? 600
+    /// ORK_FREEZE_AFTER (seconds) overrides the Settings value for testing.
+    private var freezeAfter: TimeInterval {
+        ProcessInfo.processInfo.environment["ORK_FREEZE_AFTER"].flatMap(TimeInterval.init)
+            ?? TimeInterval(OrkSettings.shared.freezeMinutes * 60)
+    }
 
     private struct Persisted: Codable {
         var workspaces: [Workspace]
@@ -229,10 +231,12 @@ final class AppStore: ObservableObject {
         sessions[index].exited = true
         let session = sessions[index]
         let workspaceName = workspace(id: session.workspaceID)?.name ?? "project"
-        Notifier.notify(
-            title: "\(session.agent.name) finished",
-            body: session.worktreeBranch.map { "\(workspaceName) · \($0)" } ?? workspaceName
-        )
+        if OrkSettings.shared.notifyOnExit {
+            Notifier.notify(
+                title: "\(session.agent.name) finished",
+                body: session.worktreeBranch.map { "\(workspaceName) · \($0)" } ?? workspaceName
+            )
+        }
         save()
     }
 
@@ -248,7 +252,11 @@ final class AppStore: ObservableObject {
     // MARK: - Freeze (idle sessions parked with SIGSTOP)
 
     private func pollFreeze() {
-        let requiredPolls = max(1, Int(Self.freezeAfter / Self.freezePollInterval))
+        guard OrkSettings.shared.freezeEnabled else {
+            for id in Array(frozenSessionIDs) { wake(id) }
+            return
+        }
+        let requiredPolls = max(1, Int(freezeAfter / Self.freezePollInterval))
         for session in sessions where !session.exited && !frozenSessionIDs.contains(session.id) {
             let id = session.id
             guard let pid = TerminalRegistry.shared.shellPid(for: id) else {

@@ -9,7 +9,7 @@ struct WorkspaceView: View {
 
     @State private var pane: Pane = .terminals
     @State private var layout: LayoutMode = .grid
-    @State private var useWorktree = true
+    @State private var useWorktree = OrkSettings.shared.defaultWorktree
     @State private var isGitRepo = false
     @State private var worktreeCount = 0
     @State private var errorMessage: String?
