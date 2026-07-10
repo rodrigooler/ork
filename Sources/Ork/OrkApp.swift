@@ -16,7 +16,11 @@ struct OrkApp: App {
     }
 
     var body: some Scene {
-        WindowGroup(id: "main") {
+        // A unique Window, not a WindowGroup: terminal views are singletons
+        // in TerminalRegistry, so a second main window would steal them from
+        // the first (dead scroll, blank cards). openWindow(id:) now focuses
+        // the existing window instead of minting another.
+        Window("ork", id: "main") {
             RootView()
                 .environmentObject(store)
                 // Theme lives in OrkTheme statics: re-key the tree so a mode
