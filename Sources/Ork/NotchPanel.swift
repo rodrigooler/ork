@@ -94,6 +94,11 @@ struct NotchOverlay: View {
         store.sessions.filter { !$0.exited }
     }
 
+    /// Actually working: not asleep, not hibernated.
+    private var active: [TerminalSession] {
+        live.filter { !$0.hibernated && !store.frozenSessionIDs.contains($0.id) }
+    }
+
     var body: some View {
         Group {
             if isExpanded {
@@ -118,17 +123,21 @@ struct NotchOverlay: View {
     private var collapsed: some View {
         HStack(spacing: 0) {
             HStack(spacing: 6) {
-                PulsingDot(color: live.isEmpty ? OrkTheme.faint : OrkTheme.moss, size: 5, active: !live.isEmpty)
-                Text("\(live.count)")
+                PulsingDot(color: active.isEmpty ? OrkTheme.faint : OrkTheme.moss, size: 5, active: !active.isEmpty)
+                Text("\(active.count)")
                     .font(.system(size: 10.5, weight: .semibold, design: .monospaced))
                     .foregroundStyle(.white.opacity(0.85))
-                Text(live.count == 1 ? "agent" : "agents")
+                Text("/ \(live.count)")
+                    .font(.system(size: 10.5, design: .monospaced))
+                    .foregroundStyle(.white.opacity(0.4))
+                Text("active")
                     .font(.system(size: 10))
                     .foregroundStyle(.white.opacity(0.45))
                 Spacer(minLength: 0)
             }
             .padding(.leading, 14)
             .frame(width: NotchPanelController.wingWidth)
+            .help("\(active.count) working · \(live.count - active.count) asleep or hibernated · \(live.count) total")
             Color.clear.frame(width: notchWidth)
             HStack(spacing: 5) {
                 Spacer(minLength: 0)
@@ -154,23 +163,18 @@ struct NotchOverlay: View {
             .animation(OrkMotion.state, value: feed.latest?.id)
         }
         .frame(height: notchHeight + 8)
-        .background(
-            ZStack(alignment: .bottom) {
-                Color.black.opacity(hasNotch ? 1 : 0.94)
-                // The ember wash: the logo-orange gradient sliding under the
-                // glass, so the bar reads alive instead of dead black.
-                RailLayer(animating: !live.isEmpty, tints: AnimatedRail.emberTints)
-                    .opacity(live.isEmpty ? 0.10 : 0.22)
-                    .blendMode(.screen)
-                AnimatedRail(height: 2, tints: AnimatedRail.emberTints)
-                    .opacity(live.isEmpty ? 0.35 : 0.9)
-                    .shadow(color: OrkTheme.clay.opacity(0.55), radius: 4)
-            }
-        )
+        .background(Color.black.opacity(hasNotch ? 1 : 0.94))
         .clipShape(UnevenRoundedRectangle(cornerRadii: .init(bottomLeading: 14, bottomTrailing: 14)))
         .overlay(
+            // grok.com/build border: one ember arc travels end to end.
+            // The top edge sits at the screen edge, so the uniform-radius
+            // beam path is indistinguishable from the uneven shape.
+            BorderBeam(cornerRadius: 14, lineWidth: 1.5, active: !active.isEmpty)
+                .allowsHitTesting(false)
+        )
+        .overlay(
             UnevenRoundedRectangle(cornerRadii: .init(bottomLeading: 14, bottomTrailing: 14))
-                .strokeBorder(Color.white.opacity(0.07), lineWidth: 1)
+                .strokeBorder(Color.white.opacity(0.05), lineWidth: 1)
         )
         .contentShape(Rectangle())
     }

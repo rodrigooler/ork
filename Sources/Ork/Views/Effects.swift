@@ -90,6 +90,86 @@ struct RailLayer: NSViewRepresentable {
     func updateNSView(_ nsView: RailView, context: Context) { nsView.animating = animating }
 }
 
+/// Traveling ember along a rounded border, grok.com/build style: a conic
+/// gradient spins under a stroked rounded-rect mask, so one bright arc
+/// chases itself end to end. Core Animation only, zero app-side frames.
+struct BorderBeam: NSViewRepresentable {
+    var cornerRadius: CGFloat = 14
+    var lineWidth: CGFloat = 1.5
+    var active = true
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
+
+    func makeNSView(context: Context) -> BorderBeamView {
+        BorderBeamView(cornerRadius: cornerRadius, lineWidth: lineWidth)
+    }
+
+    func updateNSView(_ nsView: BorderBeamView, context: Context) {
+        nsView.animating = active && !reduceMotion
+        nsView.alphaValue = active ? 1 : 0.3
+    }
+}
+
+final class BorderBeamView: NSView {
+    private let gradient = CAGradientLayer()
+    private let borderMask = CAShapeLayer()
+    private let cornerRadius: CGFloat
+    private let lineWidth: CGFloat
+    var animating = true {
+        didSet { if oldValue != animating { restart() } }
+    }
+
+    init(cornerRadius: CGFloat, lineWidth: CGFloat) {
+        self.cornerRadius = cornerRadius
+        self.lineWidth = lineWidth
+        super.init(frame: .zero)
+        wantsLayer = true
+        gradient.type = .conic
+        let clear = NSColor(OrkTheme.clay).withAlphaComponent(0)
+        gradient.colors = [
+            clear, clear,
+            NSColor(OrkTheme.clay).withAlphaComponent(0.7),
+            NSColor(Color(hex: 0xFFC08A)),
+            NSColor(OrkTheme.clay).withAlphaComponent(0.7),
+            clear,
+        ].map(\.cgColor)
+        gradient.locations = [0, 0.58, 0.76, 0.84, 0.92, 1]
+        gradient.startPoint = CGPoint(x: 0.5, y: 0.5)
+        gradient.endPoint = CGPoint(x: 0.5, y: 0)
+        borderMask.fillColor = nil
+        borderMask.strokeColor = NSColor.white.cgColor
+        borderMask.lineWidth = lineWidth
+        layer?.addSublayer(gradient)
+        layer?.mask = borderMask
+    }
+
+    required init?(coder: NSCoder) { nil }
+
+    override func layout() {
+        super.layout()
+        // Oversized square centered on the view so the spin always covers it.
+        let side = sqrt(bounds.width * bounds.width + bounds.height * bounds.height)
+        gradient.bounds = CGRect(x: 0, y: 0, width: side, height: side)
+        gradient.position = CGPoint(x: bounds.midX, y: bounds.midY)
+        borderMask.frame = bounds
+        borderMask.path = CGPath(
+            roundedRect: bounds.insetBy(dx: lineWidth / 2, dy: lineWidth / 2),
+            cornerWidth: cornerRadius, cornerHeight: cornerRadius, transform: nil
+        )
+        restart()
+    }
+
+    private func restart() {
+        gradient.removeAnimation(forKey: "spin")
+        guard animating, bounds.width > 0 else { return }
+        let spin = CABasicAnimation(keyPath: "transform.rotation.z")
+        spin.fromValue = 0
+        spin.toValue = -2 * Double.pi
+        spin.duration = 3.6
+        spin.repeatCount = .infinity
+        gradient.add(spin, forKey: "spin")
+    }
+}
+
 /// A gradient layer twice the view's width, slid one width per loop.
 final class RailView: NSView {
     private let gradient = CAGradientLayer()
