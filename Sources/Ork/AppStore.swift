@@ -316,8 +316,23 @@ final class AppStore: ObservableObject {
             cpuSamples[id] = (cpu, idlePolls)
             if idlePolls >= requiredPolls, TerminalRegistry.shared.freeze(id) {
                 frozenSessionIDs.insert(id)
+                notifyCoordinatorOfIdleMember(session)
             }
         }
+    }
+
+    /// An idle worker cannot ask for work once frozen; tell the coordinator
+    /// it is free so the next assignment wakes it with the task attached.
+    private func notifyCoordinatorOfIdleMember(_ session: TerminalSession) {
+        guard teamSessionIDs.contains(session.id) else { return }
+        let members = teamMembers(in: session.workspaceID)
+        guard let coordinator = members.first, coordinator.id != session.id else { return }
+        let name = TeamService.memberName(session)
+        TeamService.shared.notify(
+            memberNamed: TeamService.memberName(coordinator), in: members,
+            text: "\(name) is idle and was frozen. Any message you send wakes it with the task; if there is nothing left, reply 'standby'."
+        )
+        TeamService.shared.appendLog(session.workspaceID, "- [\(TeamService.timestamp())] \(name) went idle (frozen), coordinator notified")
     }
 
     func wake(_ id: UUID) {

@@ -58,12 +58,16 @@ final class TeamService {
             You are the COORDINATOR. When the user gives you a multi-step task: split it into \
             independent subtasks, write them on the board under '## Tasks' as '- [ ] task — owner', \
             message each owner their assignment immediately, and start your own share. Do not do \
-            work a teammate could do in parallel. Integrate results as 'done' reports arrive.
+            work a teammate could do in parallel. Integrate results as 'done' reports arrive. \
+            Ork freezes idle teammates to save CPU and tells you when that happens; your message \
+            wakes them with the task attached, so never assume a quiet teammate is gone. If someone \
+            has not reported in a while, ping them.
             """
             : """
             Your coordinator is \(teammates.first ?? "the first member"). When you get an assignment: \
             do it right away, tick its box on the board, and message the coordinator 'done: <task>' \
-            with a one-line result. If you are idle, message the coordinator asking for work.
+            with a one-line result. If you are idle, message the coordinator asking for work; if you \
+            get frozen while idle, any incoming message wakes you, so just act on it.
             """
         return """
         [ork team] You are '\(name)', part of an agent team working on '\(workspace.name)'. \
@@ -156,18 +160,32 @@ final class TeamService {
             : members.filter { Self.memberName($0) == recipient }
         appendLog(workspaceID, "- [\(Self.timestamp())] \(sender) → \(recipient): \(text)")
         guard !targets.isEmpty else {
-            appendLog(workspaceID, "  (undelivered: no team member named '\(recipient)')")
+            // A dropped assignment deadlocks the team; bounce it so the
+            // sender can correct the name instead of waiting forever.
+            appendLog(workspaceID, "  (undelivered: no team member named '\(recipient)', bounced to sender)")
+            let roster = members.map(Self.memberName).joined(separator: ", ")
+            notify(memberNamed: sender, in: members,
+                   text: "delivery FAILED: no member named '\(recipient)'. Members: \(roster). Resend as \(sender)__MEMBER__$RANDOM.md.")
             return
         }
         for target in targets {
             if target.hibernated {
-                appendLog(workspaceID, "  (skipped \(Self.memberName(target)): hibernated)")
+                appendLog(workspaceID, "  (skipped \(Self.memberName(target)): hibernated, sender notified)")
+                notify(memberNamed: sender, in: members,
+                       text: "\(Self.memberName(target)) is hibernated and did not receive your message. Ask the user to resume it, then resend.")
                 continue
             }
             store.wake(target.id)
             let message = "[team msg from \(sender)] \(text)"
             TerminalRegistry.shared.send(target.id, text: Self.bracketedPaste(message) + "\r")
         }
+    }
+
+    /// System note typed into one member's terminal, waking it if frozen.
+    func notify(memberNamed name: String, in members: [TerminalSession], text: String) {
+        guard let session = members.first(where: { Self.memberName($0) == name }), !session.hibernated else { return }
+        store?.wake(session.id)
+        TerminalRegistry.shared.send(session.id, text: Self.bracketedPaste("[team] \(text)") + "\r")
     }
 
     func appendLog(_ workspaceID: UUID, _ line: String) {
