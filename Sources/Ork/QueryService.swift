@@ -3,7 +3,8 @@ import Logging
 import NIOCore
 import NIOPosix
 import PostgresNIO
-import RediStack
+// RediStack 1.x predates Sendable audits; its connection types are event-loop bound.
+@preconcurrency import RediStack
 
 /// One-shot query execution against registered endpoints. Connects per run
 /// and closes after: a dev console, not a driver.
