@@ -27,6 +27,9 @@ final class TeamService {
     static func boardURL(_ workspaceID: UUID) -> URL { teamDir(workspaceID).appendingPathComponent("board.md") }
     static func logURL(_ workspaceID: UUID) -> URL { teamDir(workspaceID).appendingPathComponent("log.md") }
     static func membersURL(_ workspaceID: UUID) -> URL { teamDir(workspaceID).appendingPathComponent("members.md") }
+    static func historyDir(_ workspaceID: UUID) -> URL {
+        teamDir(workspaceID).appendingPathComponent("history", isDirectory: true)
+    }
     static func outboxURL(_ workspaceID: UUID) -> URL {
         teamDir(workspaceID).appendingPathComponent("outbox", isDirectory: true)
     }
@@ -70,13 +73,14 @@ final class TeamService {
         return """
         [ork team] You are '\(name)' on an agent team for '\(workspace.name)'. Teammates: \(mates). \
         Board: "\(dir)/board.md". Roster with each member's worktree path: "\(dir)/members.md". \
+        Past demands: "\(dir)/history/", read only when you need old context. \
         Send: echo "text" > "\(dir)/outbox/\(name)__MEMBER__$RANDOM.md" (MEMBER = teammate name, or 'all' to broadcast). \
         Incoming messages appear in your input as [team msg from NAME]. Protocol, follow strictly: \
         (1) Message shapes: 'task <id>: goal, files, done-criteria' | 'claim <id>' | 'done <id>: one-line verified outcome' | 'rework <id>: concrete problems' | 'approved <id>' | 'blocked <id>: reason'. \
         (2) Max \(Self.messageCharCap) chars per message; code, diffs and logs go in commits or on the board, messages carry pointers (file:line, board section). \
         (3) The board is the single source of truth: '## Backlog' holds unclaimed tasks and only the coordinator writes it; '## Tasks' holds claimed work as '- [ ] id: task — owner'; in '## Status' keep ONE line per member and overwrite your own; approved rounds move to '## Archive'; never restate board content in messages. \
         (4) Report only what you verified by running or reading; mark guesses 'unverified'; never invent or assume teammate results. \
-        (5) 'ork' as MEMBER addresses the app itself, not a teammate: send it 'sleep' to park your terminal, or 'escalate <id>: reason' to alert the human user. \
+        (5) 'ork' as MEMBER addresses the app itself, not a teammate: send it 'sleep' to park your terminal, 'escalate <id>: reason' to alert the human user, or (coordinator only) 'archive <one-line demand summary>' to snapshot the finished board into history/ and reset it ('## Decisions' survives). \
         \(role)\(persona) Keep messages short and factual. Acknowledge this briefing briefly and wait.
         """
     }
@@ -89,8 +93,8 @@ final class TeamService {
     task, no debug leftovers. Reply 'approved <id>' and archive it, or 'rework <id>' with concrete \
     problems. After 2 rework rounds on one task, or on a decision only the user can make, send \
     'escalate <id>: reason' to ork. Members claim work and sleep on their own; your message wakes \
-    a sleeping member, so never assume a quiet teammate is gone. Sleep yourself only when the \
-    Backlog is empty and every task is approved, after a final board summary.
+    a sleeping member, so never assume a quiet teammate is gone. When the Backlog is empty and \
+    every task is approved, close the demand: send 'archive <one-line summary>' to ork, then 'sleep'.
     """
 
     static func memberRole(coordinator: String) -> String {
@@ -313,11 +317,66 @@ final class TeamService {
             EventFeed.shared.post(symbol: "exclamationmark.triangle.fill", tintHex: 0xE0A458,
                                   text: "\(sender) needs you: \(reason.prefix(56))")
             Notifier.notify(title: "\(sender) needs a decision", body: String(reason.prefix(120)))
+        } else if content.hasPrefix("archive") {
+            guard members.first.map(Self.memberName) == sender else {
+                notify(memberNamed: sender, in: members,
+                       text: "only the coordinator archives the board.")
+                return
+            }
+            let summary = String(content.dropFirst("archive".count)).trimmingCharacters(in: .whitespaces)
+            archiveBoard(workspaceID, summary: summary, by: sender, members: members)
         } else {
             notify(memberNamed: sender, in: members,
-                   text: "unknown control command for 'ork'. Use 'sleep' or 'escalate <id>: reason'.")
+                   text: "unknown control command for 'ork'. Use 'sleep', 'escalate <id>: reason' or 'archive <summary>'.")
         }
     }
+
+    /// Rotates a finished demand out of the hot board: full snapshot into
+    /// history/, working sections reset from the template, '## Decisions'
+    /// carried over. Every agent reads the board often, so history must not
+    /// live inside it.
+    private func archiveBoard(_ workspaceID: UUID, summary: String, by sender: String, members: [TerminalSession]) {
+        let boardURL = Self.boardURL(workspaceID)
+        guard let board = try? String(contentsOf: boardURL, encoding: .utf8),
+              let workspaceName = store?.workspace(id: workspaceID)?.name else { return }
+        let dir = Self.historyDir(workspaceID)
+        try? FileManager.default.createDirectory(at: dir, withIntermediateDirectories: true)
+        let stamp = Self.fileStampFormatter.string(from: Date())
+        let slug = Self.sanitizedName(summary).lowercased().replacingOccurrences(of: " ", with: "-")
+        let filename = slug.isEmpty ? "\(stamp).md" : "\(stamp)-\(slug).md"
+        let header = "<!-- archived \(stamp) by \(sender): \(summary) -->\n\n"
+        try? (header + board).write(to: dir.appendingPathComponent(filename), atomically: true, encoding: .utf8)
+        try? Self.resetBoard(previous: board, workspaceName: workspaceName)
+            .write(to: boardURL, atomically: true, encoding: .utf8)
+        appendLog(workspaceID, "  (control: \(sender) archived the board → history/\(filename))")
+        EventFeed.shared.post(symbol: "archivebox", text: "\(sender) closed the demand: \(summary.prefix(48))")
+        notify(memberNamed: sender, in: members,
+               text: "board archived to history/\(filename) and reset; '## Decisions' kept.")
+    }
+
+    /// Fresh board for the next demand; only '## Decisions' survives, it is
+    /// durable team context rather than per-demand state.
+    static func resetBoard(previous: String, workspaceName: String) -> String {
+        let fresh = boardTemplate(workspaceName: workspaceName)
+        guard let kept = sectionBody("## Decisions", in: previous),
+              let blank = sectionBody("## Decisions", in: fresh) else { return fresh }
+        return fresh.replacingOccurrences(of: "## Decisions\n" + blank, with: "## Decisions\n" + kept)
+    }
+
+    /// Lines between a '## Heading' and the next '## ', exclusive.
+    static func sectionBody(_ heading: String, in text: String) -> String? {
+        let lines = text.components(separatedBy: "\n")
+        guard let start = lines.firstIndex(of: heading) else { return nil }
+        var end = start + 1
+        while end < lines.count, !lines[end].hasPrefix("## ") { end += 1 }
+        return lines[(start + 1)..<end].joined(separator: "\n")
+    }
+
+    private static let fileStampFormatter: DateFormatter = {
+        let formatter = DateFormatter()
+        formatter.dateFormat = "yyyy-MM-dd-HHmm"
+        return formatter
+    }()
 
     static func userMessageFilename(to recipient: String) -> String {
         "user__\(recipient)__\(Int(Date().timeIntervalSince1970 * 1000)).md"

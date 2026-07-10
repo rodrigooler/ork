@@ -33,14 +33,17 @@ final class TeamServiceTests: XCTestCase {
         XCTAssertTrue(briefing.contains(workspace.id.uuidString))
     }
 
-    private func member(_ slug: String, _ ws: UUID) -> TerminalSession {
+    private func member(_ slug: String, _ ws: UUID, id: UUID = UUID()) -> TerminalSession {
         let agent = AgentProfile.builtin.first { $0.slug == slug } ?? .builtin[0]
-        return TerminalSession(id: UUID(), workspaceID: ws, agent: agent, directory: "/tmp", worktreeBranch: nil)
+        return TerminalSession(id: id, workspaceID: ws, agent: agent, directory: "/tmp", worktreeBranch: nil)
     }
 
     func testResolveExactAllFuzzyAndStrays() {
         let ws = UUID()
-        let claude = member("claude", ws)
+        // Fixed id: a random one can yield a digit-only shortID (~15% of
+        // UUIDs), which resolve rejects by design and the fuzzy assertion
+        // below would flake.
+        let claude = member("claude", ws, id: UUID(uuidString: "ABCD1234-0000-4000-8000-000000000000")!)
         let codex = member("codex", ws)
         let members = [claude, codex]
         let claudeName = TeamService.memberName(claude)
@@ -120,6 +123,29 @@ final class TeamServiceTests: XCTestCase {
         for heading in ["## Backlog", "## Tasks", "## Status", "## Archive"] {
             XCTAssertTrue(board.contains(heading), "board template missing '\(heading)'")
         }
+    }
+
+    func testResetBoardKeepsDecisionsAndClearsTheDemand() {
+        var board = TeamService.boardTemplate(workspaceName: "acme")
+        board = board
+            .replacingOccurrences(of: "## Tasks\n", with: "## Tasks\n- [x] 3: ship the parser — Rodrigo\n")
+            .replacingOccurrences(of: "## Decisions\n", with: "## Decisions\n- use SQLite, not JSON files\n")
+        let fresh = TeamService.resetBoard(previous: board, workspaceName: "acme")
+        XCTAssertTrue(fresh.contains("- use SQLite, not JSON files"))
+        XCTAssertFalse(fresh.contains("ship the parser"))
+        for heading in ["## Backlog", "## Tasks", "## Status", "## Archive"] {
+            XCTAssertTrue(fresh.contains(heading))
+        }
+        // A board without a Decisions section resets to the plain template.
+        XCTAssertEqual(TeamService.resetBoard(previous: "no headings here", workspaceName: "acme"),
+                       TeamService.boardTemplate(workspaceName: "acme"))
+    }
+
+    func testBriefingOffersTheArchiveCommandToTheCoordinator() {
+        let workspace = Workspace(id: UUID(), name: "acme", path: "/tmp/acme", organizationID: nil)
+        let coordinator = TeamService.shared.briefing(for: member("claude", workspace.id), workspace: workspace, teammates: [])
+        XCTAssertTrue(coordinator.contains("archive <one-line summary>"))
+        XCTAssertTrue(coordinator.contains("history/"))
     }
 
     func testControlFilenameParsesToTheReservedRecipient() {
