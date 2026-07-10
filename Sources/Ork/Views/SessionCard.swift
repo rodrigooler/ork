@@ -157,6 +157,12 @@ struct SessionCard: View {
                     .help("Worktree: \(session.directory)")
                 statsChips
             }
+            if store.teamSessionIDs.contains(session.id) {
+                Image(systemName: "person.2.fill")
+                    .font(.system(size: 8.5))
+                    .foregroundStyle(OrkTheme.clay)
+                    .help("Team member: \(TeamService.memberName(session))")
+            }
             Spacer()
             if isFocused {
                 Text("focused")
@@ -268,6 +274,10 @@ struct TerminalSurface: NSViewRepresentable {
         let container = TerminalDropContainer(terminal: terminal)
         container.onSleep = { store.sleepSession(id) }
         container.onHibernate = { store.hibernate(id) }
+        container.isTeamMember = { store.teamSessionIDs.contains(id) }
+        container.onToggleTeam = {
+            store.teamSessionIDs.contains(id) ? store.leaveTeam(id) : store.joinTeam(id)
+        }
         return container
     }
 

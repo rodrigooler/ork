@@ -34,6 +34,9 @@ final class AppStore: ObservableObject {
     private var statsTimer: Timer?
     private var statsPollInFlight = false
 
+    /// Sessions enrolled in their workspace's agent team; see TeamService.
+    @Published private(set) var teamSessionIDs: Set<UUID> = []
+
     /// Below this share of one core, a CLI is repainting its TUI, not working.
     private static let idleCPUFraction = 0.06
     private static let freezePollInterval: TimeInterval = 30
@@ -48,12 +51,14 @@ final class AppStore: ObservableObject {
         var organizations: [Organization]
         var connections: [DBConnection]
         var sessions: [TerminalSession]
+        var teamSessionIDs: [UUID]
 
-        init(workspaces: [Workspace], organizations: [Organization], connections: [DBConnection], sessions: [TerminalSession]) {
+        init(workspaces: [Workspace], organizations: [Organization], connections: [DBConnection], sessions: [TerminalSession], teamSessionIDs: [UUID]) {
             self.workspaces = workspaces
             self.organizations = organizations
             self.connections = connections
             self.sessions = sessions
+            self.teamSessionIDs = teamSessionIDs
         }
 
         init(from decoder: Decoder) throws {
@@ -62,6 +67,7 @@ final class AppStore: ObservableObject {
             organizations = (try? container.decode([Organization].self, forKey: .organizations)) ?? []
             connections = (try? container.decode([DBConnection].self, forKey: .connections)) ?? []
             sessions = (try? container.decode([TerminalSession].self, forKey: .sessions)) ?? []
+            teamSessionIDs = (try? container.decode([UUID].self, forKey: .teamSessionIDs)) ?? []
         }
     }
 
@@ -81,11 +87,18 @@ final class AppStore: ObservableObject {
             organizations = persisted.organizations
             connections = persisted.connections
             sessions = persisted.sessions
+            teamSessionIDs = Set(persisted.teamSessionIDs)
             // These sessions had a live CLI before the last quit; relaunch
             // them with the agent's resume command so the conversation returns.
             restoredSessionIDs = Set(persisted.sessions.map(\.id))
         }
         selection = workspaces.first.map { .workspace($0.id) }
+        TeamService.shared.store = self
+        // Restored members keep their team: restart the outbox watchers.
+        for workspaceID in Set(sessions.filter { teamSessionIDs.contains($0.id) }.map(\.workspaceID)) {
+            let name = workspaces.first { $0.id == workspaceID }?.name ?? "project"
+            TeamService.shared.ensureTeam(workspaceID: workspaceID, workspaceName: name)
+        }
         freezeTimer = Timer.scheduledTimer(withTimeInterval: Self.freezePollInterval, repeats: true) { [weak self] _ in
             self?.pollFreeze()
         }
@@ -96,11 +109,13 @@ final class AppStore: ObservableObject {
     }
 
     private func save() {
+        let live = sessions.filter { !$0.exited }
         let persisted = Persisted(
             workspaces: workspaces,
             organizations: organizations,
             connections: connections,
-            sessions: sessions.filter { !$0.exited }
+            sessions: live,
+            teamSessionIDs: live.map(\.id).filter { teamSessionIDs.contains($0) }
         )
         try? JSONEncoder().encode(persisted).write(to: stateURL, options: .atomic)
     }
@@ -215,12 +230,15 @@ final class AppStore: ObservableObject {
     }
 
     func closeSession(_ id: UUID) {
+        let workspaceID = sessions.first { $0.id == id }?.workspaceID
         TerminalRegistry.shared.close(id)
         sessions.removeAll { $0.id == id }
         frozenSessionIDs.remove(id)
+        teamSessionIDs.remove(id)
         cpuSamples[id] = nil
         if focusedSessionID == id { focusedSessionID = nil }
         if focusModeSessionID == id { focusModeSessionID = nil }
+        if let workspaceID { TeamService.shared.stopWatcherIfIdle(workspaceID) }
         save()
     }
 
@@ -366,6 +384,45 @@ final class AppStore: ObservableObject {
                 self?.statsPollInFlight = false
             }
         }
+    }
+
+    // MARK: - Team (terminal-to-terminal messaging via TeamService)
+
+    func teamMembers(in workspaceID: UUID) -> [TerminalSession] {
+        sessions.filter { !$0.exited && $0.workspaceID == workspaceID && teamSessionIDs.contains($0.id) }
+    }
+
+    func joinTeam(_ id: UUID) {
+        guard let session = sessions.first(where: { $0.id == id }),
+              !session.exited, !session.hibernated, !teamSessionIDs.contains(id),
+              let ws = workspace(id: session.workspaceID) else { return }
+        let existing = teamMembers(in: ws.id)
+        teamSessionIDs.insert(id)
+        TeamService.shared.ensureTeam(workspaceID: ws.id, workspaceName: ws.name)
+        let briefing = TeamService.shared.briefing(
+            for: session, workspace: ws, teammates: existing.map(TeamService.memberName)
+        )
+        wake(id)
+        TerminalRegistry.shared.send(id, text: TeamService.bracketedPaste(briefing) + "\r")
+        let note = "[team] \(TeamService.memberName(session)) joined the team."
+        for member in existing where !member.hibernated {
+            TerminalRegistry.shared.send(member.id, text: TeamService.bracketedPaste(note) + "\r")
+        }
+        TeamService.shared.appendLog(ws.id, "- [\(TeamService.timestamp())] \(TeamService.memberName(session)) joined")
+        save()
+    }
+
+    func leaveTeam(_ id: UUID) {
+        guard teamSessionIDs.contains(id) else { return }
+        teamSessionIDs.remove(id)
+        guard let session = sessions.first(where: { $0.id == id }) else { return }
+        let note = "[team] \(TeamService.memberName(session)) left the team."
+        for member in teamMembers(in: session.workspaceID) where !member.hibernated {
+            TerminalRegistry.shared.send(member.id, text: TeamService.bracketedPaste(note) + "\r")
+        }
+        TeamService.shared.appendLog(session.workspaceID, "- [\(TeamService.timestamp())] \(TeamService.memberName(session)) left")
+        TeamService.shared.stopWatcherIfIdle(session.workspaceID)
+        save()
     }
 
     // MARK: - Connections (scoped per workspace)

@@ -5,7 +5,7 @@ struct WorkspaceView: View {
     let workspace: Workspace
 
     enum LayoutMode { case grid, flow }
-    enum Pane { case terminals, data, git }
+    enum Pane { case terminals, data, git, team }
 
     @State private var pane: Pane = .terminals
     @State private var layout: LayoutMode = .grid
@@ -39,6 +39,8 @@ struct WorkspaceView: View {
                 DataPane(workspace: workspace)
             case .git:
                 GitPane(workspace: workspace)
+            case .team:
+                TeamPane(workspace: workspace)
             }
         }
         .task(id: workspace.id) {
@@ -142,6 +144,9 @@ struct WorkspaceView: View {
             }
             switcherButton(label: "git", symbol: "arrow.triangle.branch", isOn: pane == .git, ns: paneNamespace) {
                 withAnimation(OrkMotion.state) { pane = .git }
+            }
+            switcherButton(label: "team", symbol: "person.2", isOn: pane == .team, ns: paneNamespace) {
+                withAnimation(OrkMotion.state) { pane = .team }
             }
         }
         .padding(3)

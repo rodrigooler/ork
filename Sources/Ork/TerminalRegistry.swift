@@ -206,6 +206,11 @@ final class TerminalRegistry: NSObject {
 
     // MARK: - Focus tracking
 
+    /// Types text into a session's PTY (team message routing).
+    func send(_ id: UUID, text: String) {
+        views[id]?.send(txt: text)
+    }
+
     /// Hands keyboard focus to a session's terminal (used when entering focus mode).
     func focusTerminal(_ id: UUID) {
         guard let view = views[id] else { return }
@@ -255,6 +260,8 @@ final class TerminalDropContainer: NSView {
 
     var onSleep: (() -> Void)?
     var onHibernate: (() -> Void)?
+    var isTeamMember: (() -> Bool)?
+    var onToggleTeam: (() -> Void)?
 
     init(terminal: LocalProcessTerminalView) {
         super.init(frame: terminal.frame)
@@ -278,11 +285,18 @@ final class TerminalDropContainer: NSView {
         hibernate.target = self
         hibernate.image = NSImage(systemSymbolName: "memorychip", accessibilityDescription: nil)
         menu.addItem(hibernate)
+        menu.addItem(.separator())
+        let inTeam = isTeamMember?() ?? false
+        let team = NSMenuItem(title: inTeam ? "Leave Team" : "Join Team", action: #selector(teamAction), keyEquivalent: "")
+        team.target = self
+        team.image = NSImage(systemSymbolName: inTeam ? "person.2.slash" : "person.2", accessibilityDescription: nil)
+        menu.addItem(team)
         return menu
     }
 
     @objc private func sleepAction() { onSleep?() }
     @objc private func hibernateAction() { onHibernate?() }
+    @objc private func teamAction() { onToggleTeam?() }
 
     override func draggingEntered(_ sender: NSDraggingInfo) -> NSDragOperation { .copy }
 
