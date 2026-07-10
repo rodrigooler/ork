@@ -68,13 +68,16 @@ struct TerminalSession: Identifiable, Hashable {
     var hibernated = false
     /// User-given name ("Rodrigo"); shown on the card and used as the team address.
     var customName: String?
+    /// Standing role for this terminal ("security review only"); injected as a
+    /// message on apply and carried into the team briefing.
+    var persona: String?
 
     var shortID: String { String(id.uuidString.prefix(4)).lowercased() }
 }
 
 extension TerminalSession: Codable {
     private enum CodingKeys: String, CodingKey {
-        case id, workspaceID, agent, directory, worktreeBranch, exited, hibernated, customName
+        case id, workspaceID, agent, directory, worktreeBranch, exited, hibernated, customName, persona
     }
 
     // Hand-rolled so state.json files written before a field existed still decode.
@@ -88,6 +91,7 @@ extension TerminalSession: Codable {
         exited = try container.decodeIfPresent(Bool.self, forKey: .exited) ?? false
         hibernated = try container.decodeIfPresent(Bool.self, forKey: .hibernated) ?? false
         customName = try container.decodeIfPresent(String.self, forKey: .customName)
+        persona = try container.decodeIfPresent(String.self, forKey: .persona)
     }
 }
 

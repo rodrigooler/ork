@@ -8,6 +8,7 @@ struct SessionCard: View {
     @State private var showCloseConfirm = false
     @State private var showRename = false
     @State private var renameDraft = ""
+    @State private var showConfigure = false
 
     private var isFocused: Bool {
         store.focusedSessionID == session.id && !session.exited
@@ -28,10 +29,14 @@ struct SessionCard: View {
                     // Mounting the surface would relaunch the process; stay empty.
                     Color.clear
                 } else {
-                    TerminalSurface(session: session, onRenameRequest: {
-                        renameDraft = session.customName ?? ""
-                        showRename = true
-                    })
+                    TerminalSurface(
+                        session: session,
+                        onRenameRequest: {
+                            renameDraft = session.customName ?? ""
+                            showRename = true
+                        },
+                        onConfigureRequest: { showConfigure = true }
+                    )
                     .padding(.leading, 10)
                     .padding(.trailing, 4)
                     .padding(.vertical, 8)
@@ -79,6 +84,9 @@ struct SessionCard: View {
             Button("Cancel", role: .cancel) {}
         } message: {
             Text("Teams address this terminal by its name. Leave empty to restore \(session.agent.slug)-\(session.shortID).")
+        }
+        .sheet(isPresented: $showConfigure) {
+            ConfigureAgentSheet(session: session)
         }
     }
 
@@ -271,10 +279,93 @@ struct SessionCard: View {
     }
 }
 
+/// Model, effort and standing role for one running terminal. Model and
+/// effort ride Claude Code's /model and /effort slash commands; the role is
+/// a plain injected message, so it works for every CLI.
+struct ConfigureAgentSheet: View {
+    @EnvironmentObject private var store: AppStore
+    @Environment(\.dismiss) private var dismiss
+    let session: TerminalSession
+
+    @State private var persona: String
+    @State private var model = ""
+    @State private var effort = ""
+
+    init(session: TerminalSession) {
+        self.session = session
+        _persona = State(initialValue: session.persona ?? "")
+    }
+
+    private var isClaude: Bool { session.agent.slug == "claude" }
+    private static let efforts = ["", "low", "medium", "high", "max"]
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 14) {
+            Text("Configure \(session.customName ?? session.agent.name)")
+                .font(OrkFont.display(13))
+                .foregroundStyle(OrkTheme.cream)
+            if isClaude {
+                VStack(alignment: .leading, spacing: 5) {
+                    Text("Model — sent as /model")
+                        .font(.system(size: 10.5, weight: .medium))
+                        .foregroundStyle(OrkTheme.stone)
+                    TextField("sonnet, opus, haiku…", text: $model)
+                        .textFieldStyle(.roundedBorder)
+                }
+                VStack(alignment: .leading, spacing: 5) {
+                    Text("Effort — sent as /effort")
+                        .font(.system(size: 10.5, weight: .medium))
+                        .foregroundStyle(OrkTheme.stone)
+                    Picker("", selection: $effort) {
+                        ForEach(Self.efforts, id: \.self) { level in
+                            Text(level.isEmpty ? "keep current" : level).tag(level)
+                        }
+                    }
+                    .labelsHidden()
+                    .pickerStyle(.segmented)
+                }
+            }
+            VStack(alignment: .leading, spacing: 5) {
+                Text("Role — what this terminal is responsible for")
+                    .font(.system(size: 10.5, weight: .medium))
+                    .foregroundStyle(OrkTheme.stone)
+                TextEditor(text: $persona)
+                    .font(.system(size: 11.5))
+                    .frame(height: 92)
+                    .scrollContentBackground(.hidden)
+                    .padding(6)
+                    .background(OrkTheme.well)
+                    .clipShape(RoundedRectangle(cornerRadius: 7))
+                    .overlay(RoundedRectangle(cornerRadius: 7).strokeBorder(OrkTheme.hairline, lineWidth: 1))
+                Text("Example: security review only — hunt vulnerabilities, propose fixes and hardening. Persists and joins the team briefing.")
+                    .font(.system(size: 9.5))
+                    .foregroundStyle(OrkTheme.faint)
+            }
+            HStack {
+                Spacer()
+                Button("Cancel") { dismiss() }
+                Button("Apply") {
+                    store.configureAgent(session.id, persona: persona, model: model, effort: effort)
+                    dismiss()
+                }
+                .buttonStyle(.borderedProminent)
+                .tint(OrkTheme.clay)
+                .disabled(persona.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
+                          && model.trimmingCharacters(in: .whitespaces).isEmpty && effort.isEmpty
+                          && session.persona == nil)
+            }
+        }
+        .padding(18)
+        .frame(width: 400)
+        .background(OrkTheme.ink)
+    }
+}
+
 struct TerminalSurface: NSViewRepresentable {
     @EnvironmentObject private var store: AppStore
     let session: TerminalSession
     var onRenameRequest: (() -> Void)? = nil
+    var onConfigureRequest: (() -> Void)? = nil
 
     func makeNSView(context: Context) -> TerminalDropContainer {
         let store = store
@@ -293,6 +384,7 @@ struct TerminalSurface: NSViewRepresentable {
             store.teamSessionIDs.contains(id) ? store.leaveTeam(id) : store.joinTeam(id)
         }
         container.onRename = onRenameRequest
+        container.onConfigure = onConfigureRequest
         return container
     }
 

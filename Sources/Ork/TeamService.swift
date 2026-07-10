@@ -64,6 +64,7 @@ final class TeamService {
         let isCoordinator = teammates.isEmpty
         let mates = teammates.isEmpty ? "none yet" : teammates.joined(separator: ", ")
         let role = isCoordinator ? Self.coordinatorRole : Self.memberRole(coordinator: teammates.first ?? "the first member")
+        let persona = session.persona.map { " Your standing role: \($0)." } ?? ""
         return """
         [ork team] You are '\(name)' on an agent team for '\(workspace.name)'. Teammates: \(mates). \
         Board: "\(dir)/board.md". \
@@ -73,7 +74,7 @@ final class TeamService {
         (2) Max \(Self.messageCharCap) chars per message; code, diffs and logs go in commits or on the board, messages carry pointers (file:line, board section). \
         (3) The board is the single source of truth: '## Tasks' holds active work as '- [ ] id: task — owner'; in '## Status' keep ONE line per member and overwrite your own; move finished rounds to '## Archive'; never restate board content in messages. \
         (4) Report only what you verified by running or reading; mark guesses 'unverified'; never invent or assume teammate results. \
-        \(role) Keep messages short and factual. Acknowledge this briefing briefly and wait.
+        \(role)\(persona) Keep messages short and factual. Acknowledge this briefing briefly and wait.
         """
     }
 

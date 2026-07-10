@@ -436,6 +436,35 @@ final class AppStore: ObservableObject {
         NSApp.windows.contains { !($0 is NSPanel) && $0.isVisible && $0.occlusionState.contains(.visible) }
     }
 
+    /// Runtime configuration typed into the PTY: /model and /effort are
+    /// registered Claude Code slash commands (verified against the installed
+    /// CLI), and the persona lands as a plain role message any agent
+    /// understands. The persona persists and joins future team briefings.
+    func configureAgent(_ id: UUID, persona rawPersona: String, model: String, effort: String) {
+        guard let index = sessions.firstIndex(where: { $0.id == id }) else { return }
+        wake(id)
+        let persona = rawPersona.trimmingCharacters(in: .whitespacesAndNewlines)
+        if sessions[index].persona != (persona.isEmpty ? nil : persona) {
+            sessions[index].persona = persona.isEmpty ? nil : persona
+            save()
+        }
+        var sends: [String] = []
+        let model = model.trimmingCharacters(in: .whitespaces)
+        if !model.isEmpty { sends.append("/model \(model)\r") }
+        if !effort.isEmpty { sends.append("/effort \(effort)\r") }
+        if !persona.isEmpty {
+            sends.append(TeamService.bracketedPaste(
+                "[ork] Your role in this session: \(persona). Follow it from now on; acknowledge briefly."
+            ) + "\r")
+        }
+        // Staggered so each command lands after the previous one settles.
+        for (offset, text) in sends.enumerated() {
+            DispatchQueue.main.asyncAfter(deadline: .now() + Double(offset) * 0.4) {
+                TerminalRegistry.shared.send(id, text: text)
+            }
+        }
+    }
+
     /// A duplicate name gets the short id appended so exact-match routing
     /// never picks the wrong terminal; an empty name restores the default.
     /// Teammates already self-correct on the old name (the router bounces

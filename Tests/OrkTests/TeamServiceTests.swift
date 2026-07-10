@@ -93,6 +93,17 @@ final class TeamServiceTests: XCTestCase {
         XCTAssertTrue(briefing.contains("## Archive"))
     }
 
+    func testBriefingCarriesThePersona() {
+        let workspace = Workspace(id: UUID(), name: "acme", path: "/tmp/acme", organizationID: nil)
+        var session = member("claude", workspace.id)
+        session.persona = "security review only"
+        let briefing = TeamService.shared.briefing(for: session, workspace: workspace, teammates: [])
+        XCTAssertTrue(briefing.contains("Your standing role: security review only."))
+        session.persona = nil
+        let plain = TeamService.shared.briefing(for: session, workspace: workspace, teammates: [])
+        XCTAssertFalse(plain.contains("standing role"))
+    }
+
     func testFirstJoinerBriefsAsCoordinatorLaterOnesReportToThem() {
         let workspace = Workspace(id: UUID(), name: "acme", path: "/tmp/acme", organizationID: nil)
         let session = TerminalSession(

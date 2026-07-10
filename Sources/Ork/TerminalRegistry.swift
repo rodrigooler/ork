@@ -263,6 +263,7 @@ final class TerminalDropContainer: NSView {
     var isTeamMember: (() -> Bool)?
     var onToggleTeam: (() -> Void)?
     var onRename: (() -> Void)?
+    var onConfigure: (() -> Void)?
 
     init(terminal: LocalProcessTerminalView) {
         super.init(frame: terminal.frame)
@@ -292,6 +293,12 @@ final class TerminalDropContainer: NSView {
         team.target = self
         team.image = NSImage(systemSymbolName: inTeam ? "person.2.slash" : "person.2", accessibilityDescription: nil)
         menu.addItem(team)
+        if onConfigure != nil {
+            let configure = NSMenuItem(title: "Configure Agent…", action: #selector(configureAction), keyEquivalent: "")
+            configure.target = self
+            configure.image = NSImage(systemSymbolName: "slider.horizontal.3", accessibilityDescription: nil)
+            menu.addItem(configure)
+        }
         if onRename != nil {
             let rename = NSMenuItem(title: "Rename Agent…", action: #selector(renameAction), keyEquivalent: "")
             rename.target = self
@@ -305,6 +312,7 @@ final class TerminalDropContainer: NSView {
     @objc private func hibernateAction() { onHibernate?() }
     @objc private func teamAction() { onToggleTeam?() }
     @objc private func renameAction() { onRename?() }
+    @objc private func configureAction() { onConfigure?() }
 
     override func draggingEntered(_ sender: NSDraggingInfo) -> NSDragOperation { .copy }
 
