@@ -2,13 +2,13 @@
 
 Priorities for ork, in order. Items move up or down based on real usage; open an issue if something here matters to you.
 
-## Next (0.6)
+## Next (0.7)
 
 - **Agent tool timeline**: live tool events per session by tailing the agent's transcript, AgentPeek style, in the notch and session cards.
 - **Custom team roles**: editable per-member role prompts from the team pane. Coordinator and member roles shipped in 0.5.0.
 - **Console history**: recall past queries per connection.
 
-## Shipped since 0.5.0
+## Shipped in 0.6.0
 
 - Team message box: talk to the agent team from the team pane as 'user'.
 - Rename agents: give a terminal a human name from the context menu; teams address it by that name.
