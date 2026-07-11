@@ -217,6 +217,62 @@ final class AppStore: ObservableObject {
         workspaces.filter { $0.organizationID == nil }
     }
 
+    // MARK: - Privacy (hide other clients while recording)
+
+    private var selectedWorkspace: Workspace? {
+        if case .workspace(let id)? = selection { return workspace(id: id) }
+        return nil
+    }
+
+    /// In privacy mode only the section holding the selected project stays
+    /// visible, so a screen recording for one client never shows the others.
+    var visibleOrganizations: [Organization] {
+        guard OrkSettings.shared.privacyMode else { return organizations }
+        guard let orgID = selectedWorkspace?.organizationID else { return [] }
+        return organizations.filter { $0.id == orgID }
+    }
+
+    var visibleUngroupedWorkspaces: [Workspace] {
+        guard OrkSettings.shared.privacyMode else { return ungroupedWorkspaces }
+        guard let selected = selectedWorkspace, selected.organizationID == nil else { return [] }
+        return ungroupedWorkspaces
+    }
+
+    func isWorkspaceVisible(_ id: UUID) -> Bool {
+        guard OrkSettings.shared.privacyMode else { return true }
+        guard let selected = selectedWorkspace, let target = workspace(id: id) else { return false }
+        return target.organizationID == selected.organizationID
+    }
+
+    // MARK: - Sidebar ordering (drag and drop)
+
+    /// Drop semantics: the moved item takes the target's place — moving down
+    /// lands after the target, moving up lands before it. After removal the
+    /// target index already encodes both cases, so one insert covers them.
+    static func reordered<T: Identifiable>(_ items: [T], moving id: T.ID, onto targetID: T.ID) -> [T] {
+        guard id != targetID,
+              let from = items.firstIndex(where: { $0.id == id }),
+              let to = items.firstIndex(where: { $0.id == targetID }) else { return items }
+        var result = items
+        result.insert(result.remove(at: from), at: to)
+        return result
+    }
+
+    func reorderOrganization(_ id: UUID, onto targetID: UUID) {
+        organizations = Self.reordered(organizations, moving: id, onto: targetID)
+        save()
+    }
+
+    /// Dropping a project onto another adopts the target's section
+    /// (organization) and takes its place in the list.
+    func reorderWorkspace(_ id: UUID, onto targetID: UUID) {
+        guard let target = workspace(id: targetID),
+              let index = workspaces.firstIndex(where: { $0.id == id }) else { return }
+        workspaces[index].organizationID = target.organizationID
+        workspaces = Self.reordered(workspaces, moving: id, onto: targetID)
+        save()
+    }
+
     // MARK: - Sessions
 
     @discardableResult

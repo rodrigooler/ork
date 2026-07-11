@@ -42,6 +42,9 @@ final class OrkSettings: ObservableObject {
     @Published var confirmCloseRunning: Bool {
         didSet { defaults.set(confirmCloseRunning, forKey: "confirmCloseRunning") }
     }
+    @Published var privacyMode: Bool {
+        didSet { defaults.set(privacyMode, forKey: "privacyMode") }
+    }
 
     private let defaults = UserDefaults.standard
 
@@ -54,6 +57,7 @@ final class OrkSettings: ObservableObject {
         freezeMinutes = defaults.object(forKey: "freezeMinutes") as? Int ?? 10
         notifyOnExit = defaults.object(forKey: "notifyOnExit") as? Bool ?? true
         confirmCloseRunning = defaults.object(forKey: "confirmCloseRunning") as? Bool ?? true
+        privacyMode = defaults.object(forKey: "privacyMode") as? Bool ?? false
         OrkTheme.light = appearance == .light
     }
 }

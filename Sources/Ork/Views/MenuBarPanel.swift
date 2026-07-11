@@ -7,10 +7,16 @@ import SwiftUI
 /// guess them.
 struct PanelContent: View {
     @EnvironmentObject private var store: AppStore
+    @ObservedObject private var settings = OrkSettings.shared
     let openAction: () -> Void
 
+    /// Privacy mode narrows everything to the selected project's organization.
+    private var visibleSessions: [TerminalSession] {
+        store.sessions.filter { store.isWorkspaceVisible($0.workspaceID) }
+    }
+
     private var running: Int {
-        store.sessions.filter { !$0.exited }.count
+        visibleSessions.filter { !$0.exited }.count
     }
 
     var body: some View {
@@ -87,13 +93,13 @@ struct PanelContent: View {
     }
 
     @ViewBuilder private var sessionsSection: some View {
-        if store.sessions.isEmpty {
+        if visibleSessions.isEmpty {
             Text("No active sessions.")
                 .font(.system(size: 11))
                 .foregroundStyle(OrkTheme.stone)
         } else {
             VStack(alignment: .leading, spacing: 8) {
-                ForEach(store.sessions) { row($0) }
+                ForEach(visibleSessions) { row($0) }
             }
         }
     }

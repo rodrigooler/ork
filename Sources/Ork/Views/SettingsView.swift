@@ -117,6 +117,11 @@ private struct BehaviorPane: View {
             Toggle("Notify when an agent finishes", isOn: $settings.notifyOnExit)
             Toggle("Confirm before closing a running session", isOn: $settings.confirmCloseRunning)
             Divider()
+            Toggle("Privacy mode", isOn: $settings.privacyMode)
+            Text("Shows only the current project's organization in the sidebar, menu bar and notch, and silences the notch event ticker. Flip it on before recording or presenting client work.")
+                .font(.system(size: 11))
+                .foregroundStyle(.secondary)
+            Divider()
             Toggle("Freeze idle sessions", isOn: $settings.freezeEnabled)
             Stepper(value: $settings.freezeMinutes, in: 1...60) {
                 Text("Freeze after \(settings.freezeMinutes) min idle")

@@ -1,8 +1,10 @@
 import AppKit
 import SwiftUI
+import UniformTypeIdentifiers
 
 struct SidebarView: View {
     @EnvironmentObject private var store: AppStore
+    @ObservedObject private var settings = OrkSettings.shared
 
     @State private var renameTarget: Workspace?
     @State private var renameText = ""
@@ -12,6 +14,7 @@ struct SidebarView: View {
     @State private var renameOrgTarget: Organization?
     @State private var renameOrgText = ""
     @State private var moveToNewOrgWorkspace: Workspace?
+    @State private var dropHover: UUID?
 
     private var runningCount: Int {
         store.sessions.filter { !$0.exited }.count
@@ -23,12 +26,12 @@ struct SidebarView: View {
             divider
             ScrollView {
                 VStack(alignment: .leading, spacing: 3) {
-                    ForEach(store.organizations) { org in
+                    ForEach(store.visibleOrganizations) { org in
                         orgSection(org)
                     }
 
-                    let ungrouped = store.ungroupedWorkspaces
-                    if !ungrouped.isEmpty || store.organizations.isEmpty {
+                    let ungrouped = store.visibleUngroupedWorkspaces
+                    if !ungrouped.isEmpty || store.visibleOrganizations.isEmpty {
                         sectionLabel("Projects")
                     }
                     ForEach(ungrouped) { workspaceRow($0) }
@@ -193,6 +196,10 @@ struct SidebarView: View {
             }
             .padding(.horizontal, 8)
             .padding(.vertical, 4)
+            .background(
+                RoundedRectangle(cornerRadius: 6)
+                    .fill(dropHover == org.id ? OrkTheme.clay.opacity(0.14) : .clear)
+            )
             .contentShape(Rectangle())
             .onTapGesture {
                 withAnimation(OrkMotion.state) {
@@ -200,6 +207,10 @@ struct SidebarView: View {
                     else { collapsedOrgs.insert(org.id) }
                 }
             }
+            .onDrag { NSItemProvider(object: "org:\(org.id.uuidString)" as NSString) }
+            .onDrop(of: [.plainText], delegate: SidebarDrop(targetID: org.id, hovered: $dropHover) { payload in
+                handleDrop(payload, ontoOrg: org)
+            })
             .contextMenu {
                 Button("Rename…") {
                     renameOrgText = org.name
@@ -238,7 +249,8 @@ struct SidebarView: View {
             action: { store.selection = .workspace(workspace.id) }
         ) { hovering in
             HStack(spacing: 5) {
-                if !store.organizations.isEmpty {
+                // Move menu lists every organization, so privacy mode hides it.
+                if !store.organizations.isEmpty && !settings.privacyMode {
                     // Action reveals on hover; status (dots) stays put.
                     moveMenu(for: workspace)
                         .opacity(hovering ? 1 : 0)
@@ -246,12 +258,20 @@ struct SidebarView: View {
                 sessionDots(for: workspace)
             }
         }
+        .background(
+            RoundedRectangle(cornerRadius: 8)
+                .fill(dropHover == workspace.id ? OrkTheme.clay.opacity(0.14) : .clear)
+        )
+        .onDrag { NSItemProvider(object: "ws:\(workspace.id.uuidString)" as NSString) }
+        .onDrop(of: [.plainText], delegate: SidebarDrop(targetID: workspace.id, hovered: $dropHover) { payload in
+            handleDrop(payload, ontoWorkspace: workspace)
+        })
         .contextMenu {
             Button("Rename…") {
                 renameText = workspace.name
                 renameTarget = workspace
             }
-            if !store.organizations.isEmpty {
+            if !store.organizations.isEmpty && !settings.privacyMode {
                 Menu("Move to…") {
                     ForEach(store.organizations) { org in
                         Button(org.name) {
@@ -329,6 +349,23 @@ struct SidebarView: View {
                 }
             }
         }
+    }
+
+    // MARK: - Drag and drop reordering
+
+    private func handleDrop(_ payload: String, ontoOrg org: Organization) {
+        if payload.hasPrefix("org:"), let id = UUID(uuidString: String(payload.dropFirst(4))) {
+            withAnimation(OrkMotion.state) { store.reorderOrganization(id, onto: org.id) }
+        } else if payload.hasPrefix("ws:"), let id = UUID(uuidString: String(payload.dropFirst(3))),
+                  let workspace = store.workspace(id: id) {
+            withAnimation(OrkMotion.state) { store.moveWorkspace(workspace, toOrganization: org.id) }
+        }
+    }
+
+    private func handleDrop(_ payload: String, ontoWorkspace target: Workspace) {
+        guard payload.hasPrefix("ws:"),
+              let id = UUID(uuidString: String(payload.dropFirst(3))), id != target.id else { return }
+        withAnimation(OrkMotion.state) { store.reorderWorkspace(id, onto: target.id) }
     }
 
     private var usageRow: some View {
@@ -444,6 +481,27 @@ struct SidebarRow<Trailing: View>: View {
         .onHover { hovering = $0 }
         .animation(OrkMotion.hover, value: hovering)
         .animation(OrkMotion.hover, value: isSelected)
+    }
+}
+
+/// Reorder drop target: highlights the hovered row and hands the dragged
+/// payload ("org:<uuid>" or "ws:<uuid>") to the row's handler.
+struct SidebarDrop: DropDelegate {
+    let targetID: UUID
+    @Binding var hovered: UUID?
+    let accept: (String) -> Void
+
+    func dropEntered(info: DropInfo) { hovered = targetID }
+    func dropExited(info: DropInfo) { if hovered == targetID { hovered = nil } }
+
+    func performDrop(info: DropInfo) -> Bool {
+        hovered = nil
+        guard let provider = info.itemProviders(for: [.plainText]).first else { return false }
+        _ = provider.loadObject(ofClass: NSString.self) { object, _ in
+            guard let payload = object as? String else { return }
+            DispatchQueue.main.async { accept(payload) }
+        }
+        return true
     }
 }
 

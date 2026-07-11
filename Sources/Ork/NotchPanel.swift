@@ -84,6 +84,7 @@ final class NotchPanelController {
 struct NotchOverlay: View {
     @ObservedObject var store: AppStore
     @ObservedObject private var feed = EventFeed.shared
+    @ObservedObject private var settings = OrkSettings.shared
     let notchWidth: CGFloat
     let notchHeight: CGFloat
     let hasNotch: Bool
@@ -91,7 +92,7 @@ struct NotchOverlay: View {
     @State private var isExpanded = false
 
     private var live: [TerminalSession] {
-        store.sessions.filter { !$0.exited }
+        store.sessions.filter { !$0.exited && store.isWorkspaceVisible($0.workspaceID) }
     }
 
     /// Actually working: not asleep, not hibernated.
@@ -141,7 +142,9 @@ struct NotchOverlay: View {
             Color.clear.frame(width: notchWidth)
             HStack(spacing: 5) {
                 Spacer(minLength: 0)
-                if let event = feed.latest {
+                // Events cannot be attributed to a workspace, so privacy mode
+                // silences the ticker entirely instead of leaking client names.
+                if let event = feed.latest, !settings.privacyMode {
                     Image(systemName: event.symbol)
                         .font(.system(size: 8.5))
                         .foregroundStyle(Color(hex: event.tintHex))
@@ -200,7 +203,9 @@ struct NotchOverlay: View {
                 }
                 .frame(maxHeight: 260)
             }
-            timeline
+            if !settings.privacyMode {
+                timeline
+            }
         }
         .padding(16)
         .padding(.top, hasNotch ? notchHeight : 8)
@@ -231,11 +236,13 @@ struct NotchOverlay: View {
             Text("\(live.count) \(live.count == 1 ? "session" : "sessions")")
                 .font(OrkFont.display(12))
                 .foregroundStyle(OrkTheme.cream)
-            if !store.frozenSessionIDs.isEmpty {
-                Chip(text: "\(store.frozenSessionIDs.count) asleep", tint: OrkTheme.stone)
+            let asleep = live.filter { store.frozenSessionIDs.contains($0.id) }.count
+            let inTeam = live.filter { store.teamSessionIDs.contains($0.id) }.count
+            if asleep > 0 {
+                Chip(text: "\(asleep) asleep", tint: OrkTheme.stone)
             }
-            if !store.teamSessionIDs.isEmpty {
-                Chip(text: "\(store.teamSessionIDs.count) in team", tint: OrkTheme.clay)
+            if inTeam > 0 {
+                Chip(text: "\(inTeam) in team", tint: OrkTheme.clay)
             }
             Spacer()
             Button {
