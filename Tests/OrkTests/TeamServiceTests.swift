@@ -241,6 +241,20 @@ final class TeamServiceTests: XCTestCase {
         XCTAssertTrue(briefing.contains("artifacts/"))
     }
 
+    func testBoardColumnsSplitTheKanbanStrip() {
+        var board = TeamService.boardTemplate(workspaceName: "acme")
+        board = board
+            .replacingOccurrences(of: "## Backlog\n", with: "## Backlog\n- [ ] 5: audit auth\n- [ ] 6: docs (after 5)\n")
+            .replacingOccurrences(of: "## Tasks\n", with: "## Tasks\n- [ ] 3: parser — Rodrigo\n")
+            .replacingOccurrences(of: "## Archive\n", with: "## Archive\n- 1: setup, PR #4\n")
+        let columns = TeamService.boardColumns(board)
+        XCTAssertEqual(columns.backlog, ["[ ] 5: audit auth", "[ ] 6: docs (after 5)"])
+        XCTAssertEqual(columns.tasks, ["[ ] 3: parser — Rodrigo"])
+        XCTAssertEqual(columns.archive, ["1: setup, PR #4"])
+        let empty = TeamService.boardColumns("")
+        XCTAssertTrue(empty.backlog.isEmpty && empty.tasks.isEmpty && empty.archive.isEmpty)
+    }
+
     func testOpenTaskIDsFindOnlyTheDepartedOwnersUncheckedTasks() {
         let board = """
         # Team Board — acme

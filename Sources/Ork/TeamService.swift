@@ -606,6 +606,18 @@ final class TeamService {
         return fresh.replacingOccurrences(of: "## Decisions\n" + blank, with: "## Decisions\n" + kept)
     }
 
+    /// Compact kanban read of the board: one entry per bullet line, bullet
+    /// stripped. The team pane renders these as columns above the raw board.
+    static func boardColumns(_ board: String) -> (backlog: [String], tasks: [String], archive: [String]) {
+        func items(_ heading: String) -> [String] {
+            (sectionBody(heading, in: board) ?? "").components(separatedBy: "\n")
+                .map { $0.trimmingCharacters(in: .whitespaces) }
+                .filter { $0.hasPrefix("- ") }
+                .map { String($0.dropFirst(2)) }
+        }
+        return (items("## Backlog"), items("## Tasks"), items("## Archive"))
+    }
+
     /// Lines between a '## Heading' and the next '## ', exclusive.
     static func sectionBody(_ heading: String, in text: String) -> String? {
         let lines = text.components(separatedBy: "\n")

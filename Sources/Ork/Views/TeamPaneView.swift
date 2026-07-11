@@ -129,6 +129,7 @@ struct TeamPane: View {
     private var boardView: some View {
         VStack(alignment: .leading, spacing: 0) {
             paneTitle("Board", symbol: "doc.text")
+            kanbanStrip
             ScrollView {
                 Text(board.isEmpty ? "Board is empty." : board)
                     .font(.system(size: 11, design: .monospaced))
@@ -138,6 +139,50 @@ struct TeamPane: View {
                     .padding(12)
             }
         }
+    }
+
+    /// Board at a glance: three columns with counts, first few items each.
+    /// The raw markdown below stays the source of truth.
+    @ViewBuilder private var kanbanStrip: some View {
+        let columns = TeamService.boardColumns(board)
+        if !(columns.backlog.isEmpty && columns.tasks.isEmpty && columns.archive.isEmpty) {
+            HStack(alignment: .top, spacing: 8) {
+                kanbanColumn("Backlog", items: columns.backlog, tint: OrkTheme.stone)
+                kanbanColumn("In progress", items: columns.tasks, tint: OrkTheme.clay)
+                kanbanColumn("Done", items: columns.archive, tint: OrkTheme.moss)
+            }
+            .padding(.horizontal, 12)
+            .padding(.top, 10)
+        }
+    }
+
+    private func kanbanColumn(_ title: String, items: [String], tint: Color) -> some View {
+        VStack(alignment: .leading, spacing: 4) {
+            HStack(spacing: 5) {
+                Circle().fill(tint).frame(width: 5, height: 5)
+                Text(title)
+                    .font(OrkFont.display(9.5))
+                    .foregroundStyle(OrkTheme.stone)
+                Spacer()
+                Text("\(items.count)")
+                    .font(.system(size: 9.5, weight: .semibold, design: .monospaced))
+                    .foregroundStyle(items.isEmpty ? OrkTheme.faint : tint)
+            }
+            ForEach(Array(items.prefix(4).enumerated()), id: \.offset) { _, item in
+                Text(item)
+                    .font(.system(size: 9.5, design: .monospaced))
+                    .foregroundStyle(OrkTheme.stone)
+                    .lineLimit(1)
+            }
+            if items.count > 4 {
+                Text("+\(items.count - 4) more")
+                    .font(.system(size: 9, design: .monospaced))
+                    .foregroundStyle(OrkTheme.faint)
+            }
+        }
+        .padding(8)
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .orkCard(radius: 8)
     }
 
     private var logView: some View {
