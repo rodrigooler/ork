@@ -298,19 +298,17 @@ final class AppStore: ObservableObject {
     }
 
     func closeSession(_ id: UUID) {
-        let workspaceID = sessions.first { $0.id == id }?.workspaceID
-        let wasCoordinator = workspaceID.map { teamMembers(in: $0).first?.id == id } ?? false
+        // Closing a terminal is also leaving its team: teammates get the
+        // leave note and members.md drops the ghost, exactly as if the
+        // member had left first. leaveTeam also promotes the next
+        // coordinator and stops an idle watcher.
+        if teamSessionIDs.contains(id) { leaveTeam(id) }
         TerminalRegistry.shared.close(id)
         sessions.removeAll { $0.id == id }
         frozenSessionIDs.remove(id)
-        teamSessionIDs.remove(id)
         cpuSamples[id] = nil
         if focusedSessionID == id { focusedSessionID = nil }
         if focusModeSessionID == id { focusModeSessionID = nil }
-        if let workspaceID {
-            if wasCoordinator { promoteNextCoordinator(in: workspaceID) }
-            TeamService.shared.stopWatcherIfIdle(workspaceID)
-        }
         save()
     }
 

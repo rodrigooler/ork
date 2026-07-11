@@ -76,9 +76,13 @@ final class TerminalRegistry: NSObject {
         let escapedDir = session.directory.replacingOccurrences(of: "'", with: "'\\''")
         let command = resume ? (session.agent.resumeCommand ?? session.agent.command) : session.agent.command
         let bootstrap = "cd '\(escapedDir)' && \(command)"
+        // Interactive login shell (-l -i): CLI installers put PATH exports in
+        // ~/.zshrc, which a non-interactive shell skips. Launched from Finder
+        // the app inherits launchd's bare PATH, so without -i every agent
+        // command is "not found" and the session dies instantly.
         terminal.startProcess(
             executable: "/bin/zsh",
-            args: ["-l", "-c", bootstrap],
+            args: ["-l", "-i", "-c", bootstrap],
             environment: environment.map { "\($0.key)=\($0.value)" }
         )
 

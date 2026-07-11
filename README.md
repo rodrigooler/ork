@@ -68,7 +68,7 @@ Or open `Package.swift` in Xcode and hit Run.
 
 Always run with `-c release`. Terminal emulation parses every byte the agents print; a debug build skips optimization and makes busy TUIs feel sluggish.
 
-Sessions run inside a zsh login shell, so any agent CLI on your shell profile `PATH` (`claude`, `codex`, `opencode`, ...) resolves without configuration.
+Sessions run inside an interactive zsh login shell, so any agent CLI on your shell `PATH` (`claude`, `codex`, `opencode`, ...) resolves exactly as in your terminal, including exports from `~/.zshrc`.
 
 ## Built-in agents
 

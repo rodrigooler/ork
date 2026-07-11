@@ -8,6 +8,11 @@ Priorities for ork, in order. Items move up or down based on real usage; open an
 - **Custom team roles**: editable per-member role prompts from the team pane. Coordinator and member roles shipped in 0.5.0.
 - **Console history**: recall past queries per connection.
 
+## Shipped in 0.8.1
+
+- Sessions spawn in an interactive login shell: launched from Finder, Ork.app inherits a bare PATH and `~/.zshrc` exports were skipped, so every agent died instantly with "command not found".
+- Closing a terminal now leaves its team properly: teammates get the leave note and members.md drops the ghost.
+
 ## Shipped in 0.8.0
 
 - Team protocol v3: a standing protocol.md next to the board so agents recover the messaging recipe after context compaction, a coordinator that never implements and decomposes the whole demand before assigning, a real review gate (read the diff, run build and tests, check every done-criterion, hunt edge cases and security holes), and a no-acknowledgement message economy.
