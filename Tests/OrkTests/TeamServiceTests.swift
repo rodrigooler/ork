@@ -207,6 +207,28 @@ final class TeamServiceTests: XCTestCase {
         XCTAssertTrue(mate.contains("continue your current work"))
     }
 
+    func testDuplicateMessagesSuppressInsideTheWindowOnly() {
+        let service = TeamService()
+        let t0 = Date()
+        XCTAssertFalse(service.suppressDuplicate(sender: "a", recipient: "b", content: "claim 3", now: t0))
+        XCTAssertTrue(service.suppressDuplicate(sender: "a", recipient: "b", content: "claim 3", now: t0.addingTimeInterval(5)))
+        // Different recipient or content is a different message.
+        XCTAssertFalse(service.suppressDuplicate(sender: "a", recipient: "c", content: "claim 3", now: t0.addingTimeInterval(5)))
+        XCTAssertFalse(service.suppressDuplicate(sender: "a", recipient: "b", content: "claim 4", now: t0.addingTimeInterval(5)))
+        // Outside the window the same content delivers again.
+        XCTAssertFalse(service.suppressDuplicate(sender: "a", recipient: "b", content: "claim 3",
+                                                 now: t0.addingTimeInterval(TeamService.dedupWindow + 1)))
+        // The user resends on purpose; never suppressed.
+        XCTAssertFalse(service.suppressDuplicate(sender: "user", recipient: "b", content: "go", now: t0))
+        XCTAssertFalse(service.suppressDuplicate(sender: "user", recipient: "b", content: "go", now: t0))
+    }
+
+    func testQuietThresholdMatchesTheIdleFreezeBar() {
+        XCTAssertTrue(TeamService.isQuiet(cpuDelta: 0, window: 2))
+        XCTAssertTrue(TeamService.isQuiet(cpuDelta: 0.1, window: 2))
+        XCTAssertFalse(TeamService.isQuiet(cpuDelta: 0.5, window: 2))
+    }
+
     func testControlFilenameParsesToTheReservedRecipient() {
         let parsed = TeamService.parseMessageFilename("Rodrigo__ork__1234.md")
         XCTAssertEqual(parsed?.sender, "Rodrigo")

@@ -293,6 +293,10 @@ final class TeamService {
             guard !content.isEmpty else { continue }
             try? fm.removeItem(at: url)
 
+            if suppressDuplicate(sender: parsed.sender, recipient: parsed.recipient, content: content) {
+                appendLog(workspaceID, "- [\(Self.timestamp())] \(parsed.sender) → \(parsed.recipient): duplicate within \(Int(Self.dedupWindow)) s, suppressed")
+                continue
+            }
             appendLog(workspaceID, "- [\(Self.timestamp())] \(parsed.sender) → \(parsed.recipient): \(content)")
             if Self.overCap(content, from: parsed.sender) {
                 appendLog(workspaceID, "  (bounced: \(content.count) chars over the \(Self.messageCharCap) cap)")
@@ -330,13 +334,78 @@ final class TeamService {
             }
         }
         for (id, lines) in perTarget {
-            pendingSleeps.removeValue(forKey: id)?.cancel()
-            store.wake(id)
-            TerminalRegistry.shared.send(id, text: Self.bracketedPaste(lines.joined(separator: "\n")) + "\r")
+            inject(lines, into: id)
         }
         for message in routedSummaries {
             EventFeed.shared.post(symbol: "bubble.left.and.bubble.right", text: message)
         }
+    }
+
+    // MARK: - Dedup
+
+    /// Agents occasionally fire the same echo twice (retry after compaction,
+    /// shell history replay); each duplicate costs the recipient a full turn.
+    private var recentMessages: [String: Date] = [:]
+    static let dedupWindow: TimeInterval = 60
+
+    /// True when this exact sender→recipient content already went out inside
+    /// the window; records the message otherwise. The user resends on purpose.
+    func suppressDuplicate(sender: String, recipient: String, content: String, now: Date = Date()) -> Bool {
+        recentMessages = recentMessages.filter { now.timeIntervalSince($0.value) < Self.dedupWindow }
+        guard sender != "user" else { return false }
+        let key = "\(sender)|\(recipient)|\(content)"
+        if recentMessages[key] != nil { return true }
+        recentMessages[key] = now
+        return false
+    }
+
+    // MARK: - Quiescence-gated injection
+
+    /// Typing into a PTY while the CLI is mid-turn gets the text swallowed by
+    /// a TUI repaint or spliced into the agent's own output. Delivery waits
+    /// until the recipient's process group has been CPU-quiet for one window;
+    /// messages arriving meanwhile pile onto the same batch. The check cap
+    /// keeps a long-running build from starving delivery forever.
+    private var holdQueues: [UUID: [String]] = [:]
+    private var holding: Set<UUID> = []
+    private static let quietWindow: TimeInterval = 2
+    private static let maxHoldChecks = 30
+
+    /// Same bar as idle freeze: below this CPU fraction the CLI is repainting
+    /// a spinner or waiting at its prompt, not producing output.
+    static func isQuiet(cpuDelta: Double, window: TimeInterval) -> Bool {
+        cpuDelta / window <= 0.06
+    }
+
+    private func inject(_ lines: [String], into id: UUID) {
+        pendingSleeps.removeValue(forKey: id)?.cancel()
+        holdQueues[id, default: []].append(contentsOf: lines)
+        guard !holding.contains(id) else { return }
+        guard let pid = TerminalRegistry.shared.shellPid(for: id) else {
+            flush(id)
+            return
+        }
+        holding.insert(id)
+        waitForQuiet(id, pid: pid, lastCPU: ProcessCPU.groupCPUSeconds(pgid: pid), checksLeft: Self.maxHoldChecks)
+    }
+
+    private func waitForQuiet(_ id: UUID, pid: pid_t, lastCPU: Double, checksLeft: Int) {
+        DispatchQueue.main.asyncAfter(deadline: .now() + Self.quietWindow) { [weak self] in
+            guard let self, self.holding.contains(id) else { return }
+            let cpu = ProcessCPU.groupCPUSeconds(pgid: pid)
+            if !Self.isQuiet(cpuDelta: cpu - lastCPU, window: Self.quietWindow), checksLeft > 1 {
+                self.waitForQuiet(id, pid: pid, lastCPU: cpu, checksLeft: checksLeft - 1)
+            } else {
+                self.holding.remove(id)
+                self.flush(id)
+            }
+        }
+    }
+
+    private func flush(_ id: UUID) {
+        guard let lines = holdQueues.removeValue(forKey: id), !lines.isEmpty else { return }
+        store?.wake(id)
+        TerminalRegistry.shared.send(id, text: Self.bracketedPaste(lines.joined(separator: "\n")) + "\r")
     }
 
     /// System note typed into one member's terminal, waking it if frozen.
@@ -349,9 +418,7 @@ final class TeamService {
             }
             return
         }
-        pendingSleeps.removeValue(forKey: session.id)?.cancel()
-        store?.wake(session.id)
-        TerminalRegistry.shared.send(session.id, text: Self.bracketedPaste("[team] \(text)") + "\r")
+        inject(["[team] \(text)"], into: session.id)
     }
 
     // MARK: - Control channel
