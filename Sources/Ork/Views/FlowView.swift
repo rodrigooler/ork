@@ -2,10 +2,13 @@ import SwiftUI
 
 /// Topology rail: the workspace card feeds a vertical trunk, each agent hangs
 /// off it on a horizontal stub with a tinted junction dot. Subway map, not spaghetti.
+/// The canvas toggle swaps the rail for the animated agent constellation.
 struct FlowView: View {
     let workspace: Workspace
     let sessions: [TerminalSession]
 
+    @EnvironmentObject private var store: AppStore
+    @AppStorage("flowCanvas") private var canvasOn = false
     @State private var focusedID: UUID?
 
     private var focused: TerminalSession? {
@@ -22,13 +25,75 @@ struct FlowView: View {
         firstNodeY + CGFloat(index) * nodeStep + nodeHeight / 2
     }
 
+    private var visuals: [AgentVisual] {
+        let coordinatorID = store.teamMembers(in: workspace.id).first?.id
+        return sessions.map { session in
+            AgentVisual(
+                id: session.id,
+                name: session.displayName,
+                slug: session.agent.slug,
+                symbol: session.agent.symbol,
+                tintHex: session.agent.tintHex,
+                state: session.exited ? .exited
+                    : session.hibernated ? .hibernated
+                    : store.frozenSessionIDs.contains(session.id) ? .asleep
+                    : .running,
+                isCoordinator: session.id == coordinatorID
+            )
+        }
+    }
+
     var body: some View {
-        HStack(spacing: 0) {
-            topology.frame(width: paneWidth)
-            Rectangle().fill(OrkTheme.hairline).frame(width: 1)
-            detail
-                .frame(maxWidth: .infinity, maxHeight: .infinity)
-                .padding(14)
+        Group {
+            if canvasOn {
+                canvas
+            } else {
+                HStack(spacing: 0) {
+                    topology.frame(width: paneWidth)
+                    Rectangle().fill(OrkTheme.hairline).frame(width: 1)
+                    detail
+                        .frame(maxWidth: .infinity, maxHeight: .infinity)
+                        .padding(14)
+                }
+            }
+        }
+        .overlay(alignment: .topTrailing) { modePicker.padding(10) }
+    }
+
+    private var modePicker: some View {
+        Picker("", selection: $canvasOn) {
+            Image(systemName: "list.bullet.indent").tag(false).help("Tree")
+            Image(systemName: "circle.hexagongrid").tag(true).help("Canvas")
+        }
+        .pickerStyle(.segmented)
+        .labelsHidden()
+        .controlSize(.small)
+        .frame(width: 76)
+    }
+
+    private var canvas: some View {
+        AgentCanvasView(workspace: workspace, visuals: visuals) { id in
+            focusedID = id
+        }
+        .overlay(alignment: .bottomLeading) {
+            if let session = focused {
+                HStack(spacing: 8) {
+                    Image(systemName: session.agent.symbol)
+                        .font(.system(size: 10))
+                        .foregroundStyle(session.agent.tint)
+                    Text(session.displayName)
+                        .font(.system(size: 11, weight: .medium))
+                        .foregroundStyle(OrkTheme.cream)
+                    Text(session.worktreeBranch ?? URL(fileURLWithPath: session.directory).lastPathComponent)
+                        .font(.system(size: 9.5, design: .monospaced))
+                        .foregroundStyle(OrkTheme.stone)
+                        .lineLimit(1)
+                }
+                .padding(.horizontal, 10)
+                .padding(.vertical, 6)
+                .orkCard(radius: 8)
+                .padding(12)
+            }
         }
     }
 

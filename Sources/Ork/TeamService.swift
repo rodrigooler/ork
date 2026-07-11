@@ -108,18 +108,24 @@ final class TeamService {
     'approved <id>: what you verified' and archive the round, appending the member's next \
     'task <id>' to the same message while the Backlog has open tasks; otherwise reply 'rework <id>' \
     with concrete problems. After 2 rework rounds on one task, or on a decision only the user can \
-    make, send 'escalate <id>: reason' to ork. Members claim work and sleep on their own; your \
+    make, send 'escalate <id>: reason' to ork. Approved work must land, not sit in a worktree: \
+    push the task branch and open a PR with 'gh pr create' (title: task id and goal; body: \
+    done-criteria and what you verified), one PR per task, grouping tasks into one PR only when \
+    they ship together; without a remote or gh, merge the branch into the base branch instead. \
+    Note the PR link or merge in '## Archive'. Members claim work and sleep on their own; your \
     message wakes a sleeping member, so never assume a quiet teammate is gone. When the Backlog is \
-    empty and every task is approved, close the demand: send 'archive <one-line summary>' to ork, \
-    then 'sleep'.
+    empty and every approved task is integrated, close the demand: send 'archive <one-line \
+    summary>' to ork, then 'sleep'.
     """
 
     static func memberRole(coordinator: String) -> String {
         """
         Your coordinator is \(coordinator): act on assignments immediately and fix 'rework <id>' \
-        feedback before anything else. Report 'done <id>' only after you verified the outcome \
-        yourself (build, tests, reading the result); expect a real review, your diff will be read \
-        and your tests re-run. Be proactive: when free, take the next open task from '## Backlog' \
+        feedback before anything else. Before reporting 'done <id>', rebase your branch onto the \
+        base branch (git fetch origin && git rebase, usually origin/main) and resolve your own \
+        conflicts while they are small, then verify the outcome yourself (build, tests, reading \
+        the result); expect a real review, your diff will be read and your tests re-run. \
+        Be proactive: when free, take the next open task from '## Backlog' \
         yourself, announce 'claim <id>' to the coordinator and start at once without waiting for \
         a reply; if told the task is already taken, drop that work and claim another. When the \
         Backlog is empty and nothing is pending on you, send 'sleep' to ork without announcing it. \
@@ -165,6 +171,8 @@ final class TeamService {
         Max \(messageCharCap) chars per message; details live on the board or in commits, messages carry pointers.
         No acknowledgements: silence means received; every message costs the recipient a full turn.
         board.md is the single source of truth; read it before starting any task.
+        Members rebase onto the base branch before 'done'; the coordinator integrates approved
+        work (push + 'gh pr create', or a local merge) before archiving the demand.
         """
     }
 
@@ -244,6 +252,10 @@ final class TeamService {
         sender != "user" && content.count > messageCharCap
     }
 
+    /// The agent canvas animates routed messages; nil sender means the user
+    /// or the app spoke (the comet then leaves the workspace core).
+    var onRoute: ((UUID?, UUID) -> Void)?
+
     /// Resolves a recipient segment to sessions. Exact name, then 'all'
     /// (minus the sender), then a unique fuzzy match ("b507" finds
     /// claude-b507). Digit-only strays like a bare $RANDOM never match.
@@ -302,6 +314,7 @@ final class TeamService {
                        text: "delivery FAILED: no member named '\(parsed.recipient)'. Members: \(roster). Resend as \(parsed.sender)__MEMBER__$RANDOM.md.")
                 continue
             }
+            let senderID = members.first(where: { Self.memberName($0) == parsed.sender })?.id
             for target in targets {
                 if target.hibernated {
                     appendLog(workspaceID, "  (skipped \(Self.memberName(target)): hibernated, sender notified)")
@@ -310,6 +323,7 @@ final class TeamService {
                     continue
                 }
                 perTarget[target.id, default: []].append("[team msg from \(parsed.sender)] \(content)")
+                onRoute?(senderID, target.id)
             }
             if targets.contains(where: { !$0.hibernated }) {
                 routedSummaries.append("\(parsed.sender) → \(parsed.recipient): \(content.prefix(56))")

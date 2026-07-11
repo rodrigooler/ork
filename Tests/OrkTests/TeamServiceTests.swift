@@ -179,6 +179,16 @@ final class TeamServiceTests: XCTestCase {
         }
     }
 
+    func testProtocolCarriesTheIntegrationGate() {
+        let coordinator = TeamService.coordinatorRole
+        XCTAssertTrue(coordinator.contains("gh pr create"))
+        XCTAssertTrue(coordinator.contains("merge the branch into the base branch"))
+        XCTAssertTrue(coordinator.contains("every approved task is integrated"))
+        let mate = TeamService.memberRole(coordinator: "claude-1a2b")
+        XCTAssertTrue(mate.contains("git rebase"))
+        XCTAssertTrue(TeamService.protocolText(dir: "/tmp/team").contains("gh pr create"))
+    }
+
     func testRebriefKeepsTheCoordinatorAndDoesNotStopWork() {
         let workspace = Workspace(id: UUID(), name: "acme", path: "/tmp/acme", organizationID: nil)
         let coordinator = TeamService.shared.briefing(
