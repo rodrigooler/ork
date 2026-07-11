@@ -332,7 +332,10 @@ final class AppStore: ObservableObject {
         sessions[index].exited = true
         let session = sessions[index]
         if wasCoordinator { promoteNextCoordinator(in: session.workspaceID) }
-        if teamSessionIDs.contains(id) { TeamService.shared.writeMembersFile(session.workspaceID) }
+        if teamSessionIDs.contains(id) {
+            TeamService.shared.writeMembersFile(session.workspaceID)
+            TeamService.shared.alertOrphanedTasks(workspaceID: session.workspaceID, departed: TeamService.memberName(session))
+        }
         let workspaceName = workspace(id: session.workspaceID)?.name ?? "project"
         if OrkSettings.shared.notifyOnExit {
             Notifier.notify(
@@ -632,6 +635,7 @@ final class AppStore: ObservableObject {
         EventFeed.shared.post(symbol: "person.2.slash", tintHex: 0x6F6B62, text: "\(TeamService.memberName(session)) left the team")
         if wasCoordinator { promoteNextCoordinator(in: session.workspaceID) }
         TeamService.shared.writeMembersFile(session.workspaceID)
+        TeamService.shared.alertOrphanedTasks(workspaceID: session.workspaceID, departed: TeamService.memberName(session))
         TeamService.shared.stopWatcherIfIdle(session.workspaceID)
         save()
     }

@@ -229,6 +229,53 @@ final class TeamServiceTests: XCTestCase {
         XCTAssertFalse(TeamService.isQuiet(cpuDelta: 0.5, window: 2))
     }
 
+    func testOpenTaskIDsFindOnlyTheDepartedOwnersUncheckedTasks() {
+        let board = """
+        # Team Board — acme
+
+        ## Tasks
+        - [ ] 3: ship the parser — Rodrigo
+        - [x] 4: write docs — Rodrigo
+        - [ ] 5: fix the tests — codex-9f9f
+        - [ ] 7: audit auth — Rodrigo
+
+        ## Status
+        """
+        XCTAssertEqual(TeamService.openTaskIDs(onBoard: board, owner: "Rodrigo"), ["3", "7"])
+        XCTAssertEqual(TeamService.openTaskIDs(onBoard: board, owner: "codex-9f9f"), ["5"])
+        XCTAssertTrue(TeamService.openTaskIDs(onBoard: board, owner: "ghost").isEmpty)
+        XCTAssertTrue(TeamService.openTaskIDs(onBoard: "no sections", owner: "Rodrigo").isEmpty)
+    }
+
+    func testTaskClocksFollowTheMessageShapes() {
+        let service = TeamService()
+        let ws = UUID()
+        let t0 = Date()
+        service.trackTask(workspaceID: ws, sender: "codex-9f9f", recipient: "Rodrigo", content: "claim 3", now: t0)
+        XCTAssertEqual(service.taskClocks[TeamService.clockKey(ws, "3")]?.owner, "codex-9f9f")
+        service.trackTask(workspaceID: ws, sender: "Rodrigo", recipient: "codex-9f9f", content: "task 5: fix tests", now: t0)
+        XCTAssertEqual(service.taskClocks[TeamService.clockKey(ws, "5")]?.owner, "codex-9f9f")
+        service.trackTask(workspaceID: ws, sender: "codex-9f9f", recipient: "Rodrigo", content: "done 3: green", now: t0)
+        XCTAssertNil(service.taskClocks[TeamService.clockKey(ws, "3")])
+        // Broadcast assignments name nobody; no clock starts.
+        service.trackTask(workspaceID: ws, sender: "Rodrigo", recipient: "all", content: "task 9: docs", now: t0)
+        XCTAssertNil(service.taskClocks[TeamService.clockKey(ws, "9")])
+        // Rework restarts the owner's clock.
+        service.trackTask(workspaceID: ws, sender: "Rodrigo", recipient: "codex-9f9f", content: "rework 5: edge cases", now: t0)
+        XCTAssertEqual(service.taskClocks[TeamService.clockKey(ws, "5")]?.owner, "codex-9f9f")
+    }
+
+    func testWatchdogNudgesOnceAfterTheThreshold() {
+        let ws = UUID()
+        let t0 = Date()
+        var clocks = [TeamService.clockKey(ws, "3"): TeamService.TaskClock(owner: "a", started: t0)]
+        XCTAssertTrue(TeamService.dueKeys(in: clocks, now: t0.addingTimeInterval(60)).isEmpty)
+        let late = t0.addingTimeInterval(TeamService.watchdogThreshold + 1)
+        XCTAssertEqual(TeamService.dueKeys(in: clocks, now: late), [TeamService.clockKey(ws, "3")])
+        clocks[TeamService.clockKey(ws, "3")]?.nudged = true
+        XCTAssertTrue(TeamService.dueKeys(in: clocks, now: late).isEmpty)
+    }
+
     func testControlFilenameParsesToTheReservedRecipient() {
         let parsed = TeamService.parseMessageFilename("Rodrigo__ork__1234.md")
         XCTAssertEqual(parsed?.sender, "Rodrigo")

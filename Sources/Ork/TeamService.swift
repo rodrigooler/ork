@@ -223,6 +223,7 @@ final class TeamService {
         source.setCancelHandler { close(fd) }
         source.resume()
         watchers[workspaceID] = source
+        startWatchdogIfNeeded()
         scanOutbox(workspaceID)
     }
 
@@ -318,6 +319,8 @@ final class TeamService {
                        text: "delivery FAILED: no member named '\(parsed.recipient)'. Members: \(roster). Resend as \(parsed.sender)__MEMBER__$RANDOM.md.")
                 continue
             }
+            let canonicalRecipient = targets.count == 1 ? Self.memberName(targets[0]) : parsed.recipient
+            trackTask(workspaceID: workspaceID, sender: parsed.sender, recipient: canonicalRecipient, content: content)
             let senderID = members.first(where: { Self.memberName($0) == parsed.sender })?.id
             for target in targets {
                 if target.hibernated {
@@ -408,6 +411,99 @@ final class TeamService {
         TerminalRegistry.shared.send(id, text: Self.bracketedPaste(lines.joined(separator: "\n")) + "\r")
     }
 
+    // MARK: - Orphaned tasks
+
+    /// Open '## Tasks' entries owned by this member (shape: - [ ] id: task — owner).
+    static func openTaskIDs(onBoard board: String, owner: String) -> [String] {
+        guard let tasks = sectionBody("## Tasks", in: board) else { return [] }
+        return tasks.components(separatedBy: "\n").compactMap { line in
+            let trimmed = line.trimmingCharacters(in: .whitespaces)
+            guard trimmed.hasPrefix("- [ ]"),
+                  trimmed.components(separatedBy: " — ").last?.trimmingCharacters(in: .whitespaces) == owner
+            else { return nil }
+            let body = trimmed.dropFirst(5).trimmingCharacters(in: .whitespaces)
+            let id = body.prefix { $0 != ":" }.trimmingCharacters(in: .whitespaces)
+            return id.isEmpty ? nil : id
+        }
+    }
+
+    /// A departed member's open tasks deadlock the team: the coordinator
+    /// waits forever for a 'done' that will never come.
+    func alertOrphanedTasks(workspaceID: UUID, departed name: String) {
+        guard let board = try? String(contentsOf: Self.boardURL(workspaceID), encoding: .utf8) else { return }
+        let ids = Self.openTaskIDs(onBoard: board, owner: name)
+        guard !ids.isEmpty, let members = store?.teamMembers(in: workspaceID),
+              let coordinator = members.first else { return }
+        let list = ids.joined(separator: ", ")
+        notify(memberNamed: Self.memberName(coordinator), in: members,
+               text: "\(name) left with open task(s) \(list) on the board. Move them back to '## Backlog' or reassign them.")
+        appendLog(workspaceID, "  (orphaned task(s) \(list) from \(name) flagged to the coordinator)")
+    }
+
+    // MARK: - Task watchdog
+
+    /// A claimed task with no done/blocked after this long usually means the
+    /// owner stalled silently or forgot to report; one nudge un-sticks it.
+    struct TaskClock {
+        let owner: String
+        let started: Date
+        var nudged = false
+    }
+
+    static let watchdogThreshold: TimeInterval = 30 * 60
+    private(set) var taskClocks: [String: TaskClock] = [:]
+    private var watchdog: Timer?
+
+    static func clockKey(_ workspaceID: UUID, _ taskID: String) -> String {
+        "\(workspaceID.uuidString)|\(taskID)"
+    }
+
+    /// Message shapes drive the clocks: claim/task/rework start one,
+    /// done/blocked/approved clear it. Broadcasts assign nobody.
+    func trackTask(workspaceID: UUID, sender: String, recipient: String, content: String, now: Date = Date()) {
+        let parts = content.split(separator: " ", maxSplits: 2)
+        guard parts.count >= 2 else { return }
+        let id = parts[1].trimmingCharacters(in: CharacterSet(charactersIn: ":,."))
+        guard !id.isEmpty else { return }
+        let key = Self.clockKey(workspaceID, id)
+        switch parts[0].lowercased() {
+        case "claim": taskClocks[key] = TaskClock(owner: sender, started: now)
+        case "task", "rework": if recipient != "all" { taskClocks[key] = TaskClock(owner: recipient, started: now) }
+        case "done", "blocked", "approved": taskClocks[key] = nil
+        default: break
+        }
+    }
+
+    static func dueKeys(in clocks: [String: TaskClock], now: Date) -> [String] {
+        clocks.filter { !$0.value.nudged && now.timeIntervalSince($0.value.started) > watchdogThreshold }
+            .map(\.key).sorted()
+    }
+
+    private func startWatchdogIfNeeded() {
+        guard watchdog == nil else { return }
+        let timer = Timer(timeInterval: 60, repeats: true) { [weak self] _ in self?.sweepTaskClocks() }
+        timer.tolerance = 10
+        RunLoop.main.add(timer, forMode: .common)
+        watchdog = timer
+    }
+
+    private func sweepTaskClocks(now: Date = Date()) {
+        for key in Self.dueKeys(in: taskClocks, now: now) {
+            taskClocks[key]?.nudged = true
+            guard let clock = taskClocks[key],
+                  let wsID = UUID(uuidString: String(key.prefix(36))),
+                  let members = store?.teamMembers(in: wsID),
+                  members.contains(where: { Self.memberName($0) == clock.owner }) else {
+                taskClocks[key] = nil
+                continue
+            }
+            let taskID = String(key.dropFirst(37))
+            notify(memberNamed: clock.owner, in: members,
+                   text: "task \(taskID) has been open for 30+ min with no done/blocked. Update '## Status' on the board, or send 'blocked \(taskID): reason' so it can be reassigned.")
+            appendLog(wsID, "  (watchdog nudged \(clock.owner) about task \(taskID))")
+        }
+    }
+
     /// System note typed into one member's terminal, waking it if frozen.
     /// The user has no terminal, so their bounces surface in the event feed
     /// instead of vanishing.
@@ -487,6 +583,8 @@ final class TeamService {
         try? (header + board).write(to: dir.appendingPathComponent(filename), atomically: true, encoding: .utf8)
         try? Self.resetBoard(previous: board, workspaceName: workspaceName)
             .write(to: boardURL, atomically: true, encoding: .utf8)
+        // Next demand reuses small task ids; stale clocks would nudge ghosts.
+        taskClocks = taskClocks.filter { !$0.key.hasPrefix(workspaceID.uuidString) }
         appendLog(workspaceID, "  (control: \(sender) archived the board → history/\(filename))")
         EventFeed.shared.post(symbol: "archivebox", text: "\(sender) closed the demand: \(summary.prefix(48))")
         notify(memberNamed: sender, in: members,
