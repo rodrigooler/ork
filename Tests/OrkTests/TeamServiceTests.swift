@@ -148,6 +148,37 @@ final class TeamServiceTests: XCTestCase {
         XCTAssertTrue(coordinator.contains("history/"))
     }
 
+    func testProtocolFileCarriesTheRecoveryRecipe() {
+        let text = TeamService.protocolText(dir: "/tmp/team")
+        for marker in ["/tmp/team/outbox/YOURNAME__RECIPIENT__$RANDOM.md", "members.md", "'sleep'", "board.md",
+                       "No acknowledgements"] {
+            XCTAssertTrue(text.contains(marker), "protocol.md missing '\(marker)'")
+        }
+    }
+
+    func testBoardTemplateAndBriefingPointAtTheProtocolFile() {
+        XCTAssertTrue(TeamService.boardTemplate(workspaceName: "acme").contains("protocol.md"))
+        let workspace = Workspace(id: UUID(), name: "acme", path: "/tmp/acme", organizationID: nil)
+        let briefing = TeamService.shared.briefing(for: member("claude", workspace.id), workspace: workspace, teammates: [])
+        XCTAssertTrue(briefing.contains("protocol.md"))
+    }
+
+    func testUserMessagesAreExemptFromTheCharCap() {
+        let long = String(repeating: "x", count: TeamService.messageCharCap + 1)
+        XCTAssertTrue(TeamService.overCap(long, from: "claude-1a2b"))
+        XCTAssertFalse(TeamService.overCap(long, from: "user"))
+        XCTAssertFalse(TeamService.overCap("short", from: "claude-1a2b"))
+    }
+
+    func testCoordinatorDelegatesEverythingAndReviewsForReal() {
+        let role = TeamService.coordinatorRole
+        XCTAssertTrue(role.contains("never implement"))
+        XCTAssertFalse(role.contains("take your own share"))
+        for marker in ["WHOLE demand", "run the build and tests yourself", "edge cases", "security"] {
+            XCTAssertTrue(role.contains(marker), "coordinator role missing '\(marker)'")
+        }
+    }
+
     func testControlFilenameParsesToTheReservedRecipient() {
         let parsed = TeamService.parseMessageFilename("Rodrigo__ork__1234.md")
         XCTAssertEqual(parsed?.sender, "Rodrigo")

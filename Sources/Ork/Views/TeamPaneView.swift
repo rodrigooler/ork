@@ -177,11 +177,6 @@ struct TeamPane: View {
                 .font(.system(size: 11.5, design: .monospaced))
                 .foregroundStyle(OrkTheme.cream)
                 .onSubmit(send)
-            if draft.count > TeamService.messageCharCap {
-                Text("\(draft.count)/\(TeamService.messageCharCap)")
-                    .font(.system(size: 10, design: .monospaced))
-                    .foregroundStyle(OrkTheme.brick)
-            }
             Button("Send", action: send)
                 .controlSize(.small)
                 .disabled(!canSend)
@@ -194,9 +189,10 @@ struct TeamPane: View {
         }
     }
 
+    // The agent char cap does not apply here: the user pastes a full demand
+    // on purpose, and TeamService exempts the 'user' sender.
     private var canSend: Bool {
-        let trimmed = draft.trimmingCharacters(in: .whitespacesAndNewlines)
-        return !trimmed.isEmpty && trimmed.count <= TeamService.messageCharCap
+        !draft.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
     }
 
     private func send() {

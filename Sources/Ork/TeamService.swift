@@ -6,10 +6,11 @@ import Foundation
 /// token cost is the message text itself in the recipient's context.
 ///
 /// Layout under Application Support/Ork/team/<workspaceID>/:
-///   board.md   shared context, agents read at task start and append after
-///   members.md roster with worktree paths, rewritten by Ork on join/leave/rename/exit
-///   log.md     audit trail of every routed message
-///   outbox/    agents write <sender>__<recipient>__<n>.md, Ork consumes
+///   board.md    shared context, agents read at task start and append after
+///   members.md  roster with worktree paths, rewritten by Ork on join/leave/rename/exit
+///   protocol.md standing copy of the messaging recipe, survives agent context compaction
+///   log.md      audit trail of every routed message
+///   outbox/     agents write <sender>__<recipient>__<n>.md, Ork consumes
 final class TeamService {
     static let shared = TeamService()
     weak var store: AppStore?
@@ -27,6 +28,7 @@ final class TeamService {
     static func boardURL(_ workspaceID: UUID) -> URL { teamDir(workspaceID).appendingPathComponent("board.md") }
     static func logURL(_ workspaceID: UUID) -> URL { teamDir(workspaceID).appendingPathComponent("log.md") }
     static func membersURL(_ workspaceID: UUID) -> URL { teamDir(workspaceID).appendingPathComponent("members.md") }
+    static func protocolURL(_ workspaceID: UUID) -> URL { teamDir(workspaceID).appendingPathComponent("protocol.md") }
     static func historyDir(_ workspaceID: UUID) -> URL {
         teamDir(workspaceID).appendingPathComponent("history", isDirectory: true)
     }
@@ -73,11 +75,12 @@ final class TeamService {
         return """
         [ork team] You are '\(name)' on an agent team for '\(workspace.name)'. Teammates: \(mates). \
         Board: "\(dir)/board.md". Roster with each member's worktree path: "\(dir)/members.md". \
+        If context compaction loses this briefing, re-read "\(dir)/protocol.md". \
         Past demands: "\(dir)/history/", read only when you need old context. \
         Send: echo "text" > "\(dir)/outbox/\(name)__MEMBER__$RANDOM.md" (MEMBER = teammate name, or 'all' to broadcast). \
         Incoming messages appear in your input as [team msg from NAME]. Protocol, follow strictly: \
-        (1) Message shapes: 'task <id>: goal, files, done-criteria' | 'claim <id>' | 'done <id>: one-line verified outcome' | 'rework <id>: concrete problems' | 'approved <id>' | 'blocked <id>: reason'. \
-        (2) Max \(Self.messageCharCap) chars per message; code, diffs and logs go in commits or on the board, messages carry pointers (file:line, board section). \
+        (1) Message shapes: 'task <id>: one-line goal, spec stays in the Backlog' | 'claim <id>' | 'done <id>: one-line verified outcome' | 'rework <id>: concrete problems' | 'approved <id>: what was verified' | 'blocked <id>: reason'. \
+        (2) Max \(Self.messageCharCap) chars per message; code, diffs and logs go in commits or on the board, messages carry pointers (file:line, board section). Never send bare acknowledgements ('ok', 'received', 'starting'): silence means received, every message costs the recipient a full turn. \
         (3) The board is the single source of truth: '## Backlog' holds unclaimed tasks and only the coordinator writes it; '## Tasks' holds claimed work as '- [ ] id: task — owner'; in '## Status' keep ONE line per member and overwrite your own; approved rounds move to '## Archive'; never restate board content in messages. \
         (4) Report only what you verified by running or reading; mark guesses 'unverified'; never invent or assume teammate results. \
         (5) 'ork' as MEMBER addresses the app itself, not a teammate: send it 'sleep' to park your terminal, 'escalate <id>: reason' to alert the human user, or (coordinator only) 'archive <one-line demand summary>' to snapshot the finished board into history/ and reset it ('## Decisions' survives). \
@@ -86,26 +89,34 @@ final class TeamService {
     }
 
     static let coordinatorRole = """
-    You are the COORDINATOR: put every subtask in '## Backlog' with goal, files and done-criteria, \
-    seed each member one or two by 'task' message, take your own share, and leave the rest for \
-    members to claim; never poll for status. On 'done <id>', review the diff in the owner's \
-    worktree (path in members.md) before accepting: it builds, tests pass, the diff matches the \
-    task, no debug leftovers. Reply 'approved <id>' and archive it, or 'rework <id>' with concrete \
-    problems. After 2 rework rounds on one task, or on a decision only the user can make, send \
-    'escalate <id>: reason' to ork. Members claim work and sleep on their own; your message wakes \
-    a sleeping member, so never assume a quiet teammate is gone. When the Backlog is empty and \
-    every task is approved, close the demand: send 'archive <one-line summary>' to ork, then 'sleep'.
+    You are the COORDINATOR: you decompose, assign, review and decide, and you never implement \
+    tasks yourself; if a task looks quick enough to just do, it goes in the Backlog like any other. \
+    First decompose the WHOLE demand into '## Backlog' (every task: id, goal, files, done-criteria) \
+    before assigning anything, then seed each member their first task by 'task <id>' message and \
+    leave the rest for members to claim; never poll for status, and do not reply to 'claim' unless \
+    the task is already taken. A 'done <id>' is a request for review, not proof: in the owner's \
+    worktree (path in members.md) read the full diff, run the build and tests yourself, check every \
+    done-criterion, and hunt for bugs, missed edge cases, regressions and security holes \
+    (unvalidated input, leaked secrets, debug leftovers). Approve only work you would ship: reply \
+    'approved <id>: what you verified' and archive the round, appending the member's next \
+    'task <id>' to the same message while the Backlog has open tasks; otherwise reply 'rework <id>' \
+    with concrete problems. After 2 rework rounds on one task, or on a decision only the user can \
+    make, send 'escalate <id>: reason' to ork. Members claim work and sleep on their own; your \
+    message wakes a sleeping member, so never assume a quiet teammate is gone. When the Backlog is \
+    empty and every task is approved, close the demand: send 'archive <one-line summary>' to ork, \
+    then 'sleep'.
     """
 
     static func memberRole(coordinator: String) -> String {
         """
-        Your coordinator is \(coordinator): act on assignments immediately, report 'done <id>', \
-        and fix 'rework <id>' feedback before anything else. Be proactive: when free, take the \
-        next open task from '## Backlog' yourself, announce 'claim <id>' to the coordinator and \
-        start at once without waiting for a reply; if told the task is already taken, drop that \
-        work and claim another. When the Backlog is empty and nothing is pending on you, send \
-        'sleep' to ork without announcing it. Sleeping or getting frozen is normal; any incoming \
-        message wakes you, just act on it.
+        Your coordinator is \(coordinator): act on assignments immediately and fix 'rework <id>' \
+        feedback before anything else. Report 'done <id>' only after you verified the outcome \
+        yourself (build, tests, reading the result); expect a real review, your diff will be read \
+        and your tests re-run. Be proactive: when free, take the next open task from '## Backlog' \
+        yourself, announce 'claim <id>' to the coordinator and start at once without waiting for \
+        a reply; if told the task is already taken, drop that work and claim another. When the \
+        Backlog is empty and nothing is pending on you, send 'sleep' to ork without announcing it. \
+        Sleeping or getting frozen is normal; any incoming message wakes you, just act on it.
         """
     }
 
@@ -121,7 +132,33 @@ final class TeamService {
         if !fm.fileExists(atPath: board.path) {
             try? Self.boardTemplate(workspaceName: workspaceName).write(to: board, atomically: true, encoding: .utf8)
         }
+        // Always rewritten so an old team dir picks up protocol changes.
+        try? Self.protocolText(dir: Self.teamDir(workspaceID).path)
+            .write(to: Self.protocolURL(workspaceID), atomically: true, encoding: .utf8)
         startWatcher(workspaceID)
+    }
+
+    /// Standing copy of the messaging recipe. The join briefing vanishes when
+    /// an agent's CLI compacts its context; this file is what a member
+    /// re-reads to recover (the board template points here).
+    static func protocolText(dir: String) -> String {
+        """
+        # Team protocol (recovery card)
+
+        Your team name is in members.md, in this folder. Send a message by writing a file:
+
+            echo "done 3: parser fixed, tests green" > "\(dir)/outbox/YOURNAME__RECIPIENT__$RANDOM.md"
+
+        RECIPIENT is a member name from members.md, 'all' (broadcast), or 'ork' (the app itself:
+        'sleep' parks your terminal, 'escalate <id>: reason' alerts the human user,
+        'archive <summary>', coordinator only, closes the demand into history/).
+        Incoming messages appear in your terminal as [team msg from NAME].
+
+        Shapes: task <id> | claim <id> | done <id>: outcome | rework <id>: problems | approved <id> | blocked <id>: reason.
+        Max \(messageCharCap) chars per message; details live on the board or in commits, messages carry pointers.
+        No acknowledgements: silence means received; every message costs the recipient a full turn.
+        board.md is the single source of truth; read it before starting any task.
+        """
     }
 
     static func boardTemplate(workspaceName: String) -> String {
@@ -130,6 +167,7 @@ final class TeamService {
 
         Shared context for every agent on this team. Read before starting a task.
         Keep it small: this file is read often, so redundancy costs everyone.
+        Forgot how to message teammates? Read protocol.md in this folder.
 
         ## Backlog
         <!-- unclaimed tasks, coordinator writes: - [ ] id: goal, files, done-criteria -->
@@ -194,6 +232,11 @@ final class TeamService {
     /// N-member teams from flooding each other's context windows.
     static let messageCharCap = 1200
 
+    /// The cap disciplines agents; the user pastes a long demand on purpose.
+    static func overCap(_ content: String, from sender: String) -> Bool {
+        sender != "user" && content.count > messageCharCap
+    }
+
     /// Resolves a recipient segment to sessions. Exact name, then 'all'
     /// (minus the sender), then a unique fuzzy match ("b507" finds
     /// claude-b507). Digit-only strays like a bare $RANDOM never match.
@@ -232,7 +275,7 @@ final class TeamService {
             try? fm.removeItem(at: url)
 
             appendLog(workspaceID, "- [\(Self.timestamp())] \(parsed.sender) → \(parsed.recipient): \(content)")
-            if content.count > Self.messageCharCap {
+            if Self.overCap(content, from: parsed.sender) {
                 appendLog(workspaceID, "  (bounced: \(content.count) chars over the \(Self.messageCharCap) cap)")
                 notify(memberNamed: parsed.sender, in: members,
                        text: "message to \(parsed.recipient) NOT delivered: \(content.count) chars, cap is \(Self.messageCharCap). Put details on the board or in commits and resend a pointer (file:line, board section).")
@@ -276,8 +319,15 @@ final class TeamService {
     }
 
     /// System note typed into one member's terminal, waking it if frozen.
+    /// The user has no terminal, so their bounces surface in the event feed
+    /// instead of vanishing.
     func notify(memberNamed name: String, in members: [TerminalSession], text: String) {
-        guard let session = members.first(where: { Self.memberName($0) == name }), !session.hibernated else { return }
+        guard let session = members.first(where: { Self.memberName($0) == name }), !session.hibernated else {
+            if name == "user" {
+                EventFeed.shared.post(symbol: "exclamationmark.bubble", tintHex: 0xE0A458, text: String(text.prefix(120)))
+            }
+            return
+        }
         pendingSleeps.removeValue(forKey: session.id)?.cancel()
         store?.wake(session.id)
         TerminalRegistry.shared.send(session.id, text: Self.bracketedPaste("[team] \(text)") + "\r")
@@ -298,7 +348,8 @@ final class TeamService {
             appendLog(workspaceID, "  (control from unknown sender '\(sender)' ignored)")
             return
         }
-        if content == "sleep" {
+        let lowered = content.lowercased()
+        if lowered == "sleep" {
             appendLog(workspaceID, "  (control: \(sender) sleeps until messaged)")
             // A short grace lets the CLI finish printing its turn before the
             // SIGSTOP; an incoming message meanwhile cancels the park so the
@@ -311,13 +362,13 @@ final class TeamService {
             pendingSleeps[id]?.cancel()
             pendingSleeps[id] = work
             DispatchQueue.main.asyncAfter(deadline: .now() + 2, execute: work)
-        } else if content.hasPrefix("escalate") {
+        } else if lowered.hasPrefix("escalate") {
             let reason = String(content.dropFirst("escalate".count)).trimmingCharacters(in: .whitespaces)
             appendLog(workspaceID, "  (control: \(sender) escalated to the user)")
             EventFeed.shared.post(symbol: "exclamationmark.triangle.fill", tintHex: 0xE0A458,
                                   text: "\(sender) needs you: \(reason.prefix(56))")
             Notifier.notify(title: "\(sender) needs a decision", body: String(reason.prefix(120)))
-        } else if content.hasPrefix("archive") {
+        } else if lowered.hasPrefix("archive") {
             guard members.first.map(Self.memberName) == sender else {
                 notify(memberNamed: sender, in: members,
                        text: "only the coordinator archives the board.")
