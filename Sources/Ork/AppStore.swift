@@ -26,6 +26,8 @@ final class AppStore: ObservableObject {
     @Published private(set) var frozenSessionIDs: Set<UUID> = []
     /// Slept by the user, not the idle poll: survives freezeEnabled being off.
     private var manualSleepIDs: Set<UUID> = []
+    /// When the idle poll froze each session; drives auto-hibernate.
+    private var freezeStamps: [UUID: Date] = [:]
     private var freezeTimer: Timer?
     private var cpuSamples: [UUID: (cpu: Double, idlePolls: Int)] = [:]
 
@@ -40,6 +42,7 @@ final class AppStore: ObservableObject {
     /// Below this share of one core, a CLI is repainting its TUI, not working.
     private static let idleCPUFraction = 0.06
     private static let freezePollInterval: TimeInterval = 30
+    private static let hibernateAfterFrozen: TimeInterval = 30 * 60
     /// ORK_FREEZE_AFTER (seconds) overrides the Settings value for testing.
     private var freezeAfter: TimeInterval {
         ProcessInfo.processInfo.environment["ORK_FREEZE_AFTER"].flatMap(TimeInterval.init)
@@ -306,6 +309,7 @@ final class AppStore: ObservableObject {
         TerminalRegistry.shared.close(id)
         sessions.removeAll { $0.id == id }
         frozenSessionIDs.remove(id)
+        freezeStamps[id] = nil
         cpuSamples[id] = nil
         if focusedSessionID == id { focusedSessionID = nil }
         if focusModeSessionID == id { focusModeSessionID = nil }
@@ -397,9 +401,26 @@ final class AppStore: ObservableObject {
             cpuSamples[id] = (cpu, idlePolls)
             if idlePolls >= requiredPolls, TerminalRegistry.shared.freeze(id) {
                 frozenSessionIDs.insert(id)
+                freezeStamps[id] = Date()
                 notifyCoordinatorOfIdleMember(session)
                 EventFeed.shared.post(symbol: "snowflake", tintHex: 0x6F6B62, text: "\(session.displayName) went idle, frozen")
             }
+        }
+        pollAutoHibernate()
+    }
+
+    /// A frozen session still holds its memory; after long enough idle the
+    /// CLI process itself goes. Only sessions that can resume their
+    /// conversation qualify; team members must stay reachable and a manual
+    /// sleep is a user decision.
+    private func pollAutoHibernate() {
+        guard OrkSettings.shared.autoHibernate else { return }
+        let now = Date()
+        for id in Array(frozenSessionIDs) where !manualSleepIDs.contains(id) && !teamSessionIDs.contains(id) {
+            guard let stamp = freezeStamps[id], now.timeIntervalSince(stamp) > Self.hibernateAfterFrozen,
+                  let session = sessions.first(where: { $0.id == id }), session.agent.resumeCommand != nil
+            else { continue }
+            hibernate(id)
         }
     }
 
@@ -422,6 +443,7 @@ final class AppStore: ObservableObject {
         TerminalRegistry.shared.thaw(id)
         frozenSessionIDs.remove(id)
         manualSleepIDs.remove(id)
+        freezeStamps[id] = nil
         cpuSamples[id] = nil
     }
 
@@ -434,6 +456,7 @@ final class AppStore: ObservableObject {
         sessions[index].hibernated = true
         frozenSessionIDs.remove(id)
         manualSleepIDs.remove(id)
+        freezeStamps[id] = nil
         cpuSamples[id] = nil
         if focusedSessionID == id { focusedSessionID = nil }
         if focusModeSessionID == id { focusModeSessionID = nil }

@@ -36,6 +36,9 @@ final class OrkSettings: ObservableObject {
     @Published var freezeMinutes: Int {
         didSet { defaults.set(freezeMinutes, forKey: "freezeMinutes") }
     }
+    @Published var autoHibernate: Bool {
+        didSet { defaults.set(autoHibernate, forKey: "autoHibernate") }
+    }
     @Published var notifyOnExit: Bool {
         didSet { defaults.set(notifyOnExit, forKey: "notifyOnExit") }
     }
@@ -55,6 +58,7 @@ final class OrkSettings: ObservableObject {
         defaultWorktree = defaults.object(forKey: "defaultWorktree") as? Bool ?? true
         freezeEnabled = defaults.object(forKey: "freezeEnabled") as? Bool ?? true
         freezeMinutes = defaults.object(forKey: "freezeMinutes") as? Int ?? 10
+        autoHibernate = defaults.object(forKey: "autoHibernate") as? Bool ?? false
         notifyOnExit = defaults.object(forKey: "notifyOnExit") as? Bool ?? true
         confirmCloseRunning = defaults.object(forKey: "confirmCloseRunning") as? Bool ?? true
         privacyMode = defaults.object(forKey: "privacyMode") as? Bool ?? false

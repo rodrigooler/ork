@@ -130,6 +130,11 @@ private struct BehaviorPane: View {
             Text("Idle sessions are suspended with SIGSTOP and stop burning CPU. Click a frozen card to wake it.")
                 .font(.system(size: 11))
                 .foregroundStyle(.secondary)
+            Toggle("Hibernate sessions frozen for 30 min", isOn: $settings.autoHibernate)
+                .disabled(!settings.freezeEnabled)
+            Text("Hibernating ends the process and returns its memory; the conversation resumes on click. Applies only to agents with a resume command; manually slept sessions and team members are exempt.")
+                .font(.system(size: 11))
+                .foregroundStyle(.secondary)
         }
         .padding(20)
     }

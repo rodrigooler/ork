@@ -73,10 +73,46 @@ struct UsageView: View {
                     .font(.system(size: 10, design: .monospaced))
                     .foregroundStyle(OrkTheme.stone)
             }
+            if !usage.projects.isEmpty {
+                Rectangle().fill(OrkTheme.hairline).frame(height: 1)
+                projectBreakdown(usage.projects, tint: tint)
+            }
         }
         .padding(14)
         .orkCard()
         .frame(maxWidth: 640)
+    }
+
+    /// Where the tokens went: top project dirs in the same window, with a
+    /// bar proportional to the biggest spender.
+    private func projectBreakdown(_ projects: [AgentUsage.Project], tint: Color) -> some View {
+        let peak = max(projects.first?.tokens ?? 1, 1)
+        return VStack(alignment: .leading, spacing: 5) {
+            Text("By project")
+                .font(OrkFont.display(9.5))
+                .foregroundStyle(OrkTheme.stone)
+            ForEach(projects.prefix(6)) { project in
+                HStack(spacing: 8) {
+                    Text(project.name)
+                        .font(.system(size: 10, design: .monospaced))
+                        .foregroundStyle(OrkTheme.cream)
+                        .lineLimit(1)
+                        .frame(width: 180, alignment: .leading)
+                    Capsule()
+                        .fill(tint.opacity(0.55))
+                        .frame(width: max(3, 240 * CGFloat(project.tokens) / CGFloat(peak)), height: 5)
+                    Spacer(minLength: 0)
+                    Text(TokenFormat.compact(project.tokens))
+                        .font(.system(size: 10, design: .monospaced))
+                        .foregroundStyle(OrkTheme.stone)
+                }
+            }
+            if projects.count > 6 {
+                Text("+\(projects.count - 6) more")
+                    .font(.system(size: 9, design: .monospaced))
+                    .foregroundStyle(OrkTheme.faint)
+            }
+        }
     }
 }
 
