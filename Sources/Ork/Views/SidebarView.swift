@@ -5,6 +5,7 @@ import UniformTypeIdentifiers
 struct SidebarView: View {
     @EnvironmentObject private var store: AppStore
     @ObservedObject private var settings = OrkSettings.shared
+    @ObservedObject private var updates = UpdateService.shared
 
     @State private var renameTarget: Workspace?
     @State private var renameText = ""
@@ -410,12 +411,39 @@ struct SidebarView: View {
                     .foregroundStyle(OrkTheme.faint)
             }
             Spacer()
-            Text("v0.7.0")
+            updateBadge
+            Text("v" + OrkVersion.current)
                 .font(.system(size: 9, design: .monospaced))
                 .foregroundStyle(OrkTheme.faint)
         }
         .padding(14)
         .animation(OrkMotion.state, value: runningCount)
+    }
+
+    @ViewBuilder private var updateBadge: some View {
+        switch updates.phase {
+        case .available(let version):
+            Button {
+                updates.install()
+            } label: {
+                Text("update to \(version)")
+                    .font(.system(size: 9, weight: .medium, design: .monospaced))
+                    .foregroundStyle(OrkTheme.moss)
+            }
+            .buttonStyle(.plain)
+            .help("Download ork \(version), swap the app in place and relaunch")
+        case .installing:
+            Text("updating…")
+                .font(.system(size: 9, design: .monospaced))
+                .foregroundStyle(OrkTheme.stone)
+        case .failed(let reason):
+            Text("update failed")
+                .font(.system(size: 9, design: .monospaced))
+                .foregroundStyle(OrkTheme.brick)
+                .help(reason)
+        case .idle:
+            EmptyView()
+        }
     }
 }
 

@@ -595,6 +595,29 @@ final class AppStore: ObservableObject {
         save()
     }
 
+    /// Resends the current protocol briefing to every member in place, so an
+    /// existing team picks up protocol changes after an app update without
+    /// being disbanded. Join order is kept: the first member stays coordinator.
+    func rebriefTeam(_ workspaceID: UUID) {
+        let members = teamMembers(in: workspaceID)
+        guard let ws = workspace(id: workspaceID), !members.isEmpty else { return }
+        TeamService.shared.ensureTeam(workspaceID: ws.id, workspaceName: ws.name)
+        TeamService.shared.writeMembersFile(ws.id)
+        for (index, member) in members.enumerated() where !member.hibernated {
+            // Coordinator first in the teammate list, so member briefings
+            // name the right coordinator.
+            let mates = members.filter { $0.id != member.id }.map(TeamService.memberName)
+            let briefing = TeamService.shared.briefing(
+                for: member, workspace: ws, teammates: mates,
+                asCoordinator: index == 0, rebrief: true
+            )
+            wake(member.id)
+            TerminalRegistry.shared.send(member.id, text: TeamService.bracketedPaste(briefing) + "\r")
+        }
+        TeamService.shared.appendLog(ws.id, "- [\(TeamService.timestamp())] protocol rebrief sent to all members")
+        EventFeed.shared.post(symbol: "arrow.triangle.2.circlepath", text: "team \(ws.name) rebriefed with the current protocol")
+    }
+
     func leaveTeam(_ id: UUID) {
         guard teamSessionIDs.contains(id) else { return }
         guard let session = sessions.first(where: { $0.id == id }) else {

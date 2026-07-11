@@ -179,6 +179,24 @@ final class TeamServiceTests: XCTestCase {
         }
     }
 
+    func testRebriefKeepsTheCoordinatorAndDoesNotStopWork() {
+        let workspace = Workspace(id: UUID(), name: "acme", path: "/tmp/acme", organizationID: nil)
+        let coordinator = TeamService.shared.briefing(
+            for: member("claude", workspace.id), workspace: workspace,
+            teammates: ["codex-9f9f"], asCoordinator: true, rebrief: true
+        )
+        XCTAssertTrue(coordinator.contains("COORDINATOR"))
+        XCTAssertTrue(coordinator.contains("continue your current work"))
+        XCTAssertFalse(coordinator.contains("Acknowledge this briefing"))
+
+        let mate = TeamService.shared.briefing(
+            for: member("codex", workspace.id), workspace: workspace,
+            teammates: ["claude-1a2b"], asCoordinator: false, rebrief: true
+        )
+        XCTAssertTrue(mate.contains("Your coordinator is claude-1a2b"))
+        XCTAssertTrue(mate.contains("continue your current work"))
+    }
+
     func testControlFilenameParsesToTheReservedRecipient() {
         let parsed = TeamService.parseMessageFilename("Rodrigo__ork__1234.md")
         XCTAssertEqual(parsed?.sender, "Rodrigo")

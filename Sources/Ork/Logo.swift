@@ -1,16 +1,28 @@
 import AppKit
 
 enum OrkMark {
+    /// SwiftPM's Bundle.module only looks at the .app ROOT, where codesign
+    /// forbids unsealed content, so inside Ork.app the resource bundle lives
+    /// in Contents/Resources and is resolved here by hand. The bare layout
+    /// (swift run, pre-0.8.0 zips) keeps it next to the executable.
+    private static let resources: Bundle = {
+        let name = "Ork_Ork.bundle"
+        for base in [Bundle.main.resourceURL, Bundle.main.bundleURL] {
+            if let base, let bundle = Bundle(url: base.appendingPathComponent(name)) { return bundle }
+        }
+        return Bundle.module
+    }()
+
     /// Bundled Orbitron (OFL) — the techno face of the wordmark, exposed to
     /// SwiftUI as OrkFont.display. Must run before any view renders.
     static func registerFonts() {
-        guard let url = Bundle.module.url(forResource: "Orbitron", withExtension: "ttf") else { return }
+        guard let url = resources.url(forResource: "Orbitron", withExtension: "ttf") else { return }
         CTFontManagerRegisterFontsForURL(url as CFURL, .process, nil)
     }
 
     /// The official ork icon (Sources/Ork/Resources/ork-icon.png): neon
     /// rounded frame with the techno wordmark. Used in-app and as Dock icon.
-    static let appIcon: NSImage? = Bundle.module
+    static let appIcon: NSImage? = resources
         .url(forResource: "ork-icon", withExtension: "png")
         .flatMap { NSImage(contentsOf: $0) }
 
@@ -36,7 +48,7 @@ enum OrkMark {
 
     static func agentIcon(slug: String) -> NSImage? {
         if let hit = agentIconCache[slug] { return hit }
-        let image = Bundle.module
+        let image = resources
             .url(forResource: "agent-\(slug)", withExtension: "png")
             .flatMap { NSImage(contentsOf: $0) }
         agentIconCache[slug] = image

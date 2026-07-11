@@ -38,11 +38,21 @@ Terminal agents multiplied, and running four of them across ad hoc terminal tabs
 
 ## Install
 
-Grab the latest zip from [Releases](https://github.com/rodrigooler/ork/releases), unpack it and run `./Ork` from the unpacked folder. Requires macOS 14 or newer on Apple Silicon. Releases are not notarized yet, so clear the quarantine flag once:
+Requires macOS 14 or newer on Apple Silicon.
+
+One-liner, installs `Ork.app` into /Applications:
 
 ```sh
-xattr -dr com.apple.quarantine <unpacked-folder>
+curl -fsSL https://raw.githubusercontent.com/rodrigooler/ork/main/install.sh | sh
 ```
+
+Or grab the latest zip from [Releases](https://github.com/rodrigooler/ork/releases), unpack it and drag `Ork.app` into Applications. Releases are ad-hoc signed, not notarized, so browser downloads need the quarantine flag cleared once:
+
+```sh
+xattr -dr com.apple.quarantine /Applications/Ork.app
+```
+
+ork checks GitHub for a newer release on launch; when one is out, an update button shows up in the sidebar footer and swaps the app in place.
 
 ### Build from source
 

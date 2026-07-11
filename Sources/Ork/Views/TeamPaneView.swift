@@ -111,6 +111,11 @@ struct TeamPane: View {
                     .orkCard(radius: 7)
                 }
                 Spacer()
+                Button("Rebrief") {
+                    store.rebriefTeam(workspace.id)
+                }
+                .controlSize(.small)
+                .help("Resend the current protocol briefing to every member, e.g. after an Ork update")
                 Button("Open board") {
                     NSWorkspace.shared.open(TeamService.boardURL(workspace.id))
                 }

@@ -56,6 +56,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         if let icon = OrkMark.dockIcon {
             NSApp.applicationIconImage = icon
         }
+        UpdateService.shared.checkOnLaunch()
         DispatchQueue.main.async {
             if let window = NSApp.windows.first, let screen = window.screen ?? NSScreen.main {
                 // Opaque: behind-window vibrancy works per-region regardless

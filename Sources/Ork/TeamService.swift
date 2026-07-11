@@ -65,13 +65,20 @@ final class TeamService {
     /// The protocol rules are what keep N-member teams fast and factual:
     /// pointers over payloads, the board as single source of truth, and
     /// verified-only reporting.
-    func briefing(for session: TerminalSession, workspace: Workspace, teammates: [String]) -> String {
+    /// `asCoordinator` overrides the joined-first inference so an existing
+    /// team can be rebriefed in place; `rebrief` swaps the closing line so a
+    /// mid-task member carries on instead of stopping to wait.
+    func briefing(for session: TerminalSession, workspace: Workspace, teammates: [String],
+                  asCoordinator: Bool? = nil, rebrief: Bool = false) -> String {
         let dir = Self.teamDir(workspace.id).path
         let name = Self.memberName(session)
-        let isCoordinator = teammates.isEmpty
+        let isCoordinator = asCoordinator ?? teammates.isEmpty
         let mates = teammates.isEmpty ? "none yet" : teammates.joined(separator: ", ")
         let role = isCoordinator ? Self.coordinatorRole : Self.memberRole(coordinator: teammates.first ?? "the first member")
         let persona = session.persona.map { " Your standing role: \($0)." } ?? ""
+        let closing = rebrief
+            ? "This protocol update replaces your earlier briefing; do not reply, continue your current work under it."
+            : "Acknowledge this briefing briefly and wait."
         return """
         [ork team] You are '\(name)' on an agent team for '\(workspace.name)'. Teammates: \(mates). \
         Board: "\(dir)/board.md". Roster with each member's worktree path: "\(dir)/members.md". \
@@ -84,7 +91,7 @@ final class TeamService {
         (3) The board is the single source of truth: '## Backlog' holds unclaimed tasks and only the coordinator writes it; '## Tasks' holds claimed work as '- [ ] id: task — owner'; in '## Status' keep ONE line per member and overwrite your own; approved rounds move to '## Archive'; never restate board content in messages. \
         (4) Report only what you verified by running or reading; mark guesses 'unverified'; never invent or assume teammate results. \
         (5) 'ork' as MEMBER addresses the app itself, not a teammate: send it 'sleep' to park your terminal, 'escalate <id>: reason' to alert the human user, or (coordinator only) 'archive <one-line demand summary>' to snapshot the finished board into history/ and reset it ('## Decisions' survives). \
-        \(role)\(persona) Keep messages short and factual. Acknowledge this briefing briefly and wait.
+        \(role)\(persona) Keep messages short and factual. \(closing)
         """
     }
 
