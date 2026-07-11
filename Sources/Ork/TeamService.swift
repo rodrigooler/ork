@@ -252,8 +252,8 @@ final class TeamService {
         sender != "user" && content.count > messageCharCap
     }
 
-    /// The agent canvas animates routed messages; nil sender means the user
-    /// or the app spoke (the comet then leaves the workspace core).
+    /// The agent canvas highlights routed messages; nil sender means the
+    /// user or the app spoke.
     var onRoute: ((UUID?, UUID) -> Void)?
 
     /// Resolves a recipient segment to sessions. Exact name, then 'all'

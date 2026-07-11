@@ -25,24 +25,6 @@ struct FlowView: View {
         firstNodeY + CGFloat(index) * nodeStep + nodeHeight / 2
     }
 
-    private var visuals: [AgentVisual] {
-        let coordinatorID = store.teamMembers(in: workspace.id).first?.id
-        return sessions.map { session in
-            AgentVisual(
-                id: session.id,
-                name: session.displayName,
-                slug: session.agent.slug,
-                symbol: session.agent.symbol,
-                tintHex: session.agent.tintHex,
-                state: session.exited ? .exited
-                    : session.hibernated ? .hibernated
-                    : store.frozenSessionIDs.contains(session.id) ? .asleep
-                    : .running,
-                isCoordinator: session.id == coordinatorID
-            )
-        }
-    }
-
     var body: some View {
         Group {
             if canvasOn {
@@ -72,29 +54,7 @@ struct FlowView: View {
     }
 
     private var canvas: some View {
-        AgentCanvasView(workspace: workspace, visuals: visuals) { id in
-            focusedID = id
-        }
-        .overlay(alignment: .bottomLeading) {
-            if let session = focused {
-                HStack(spacing: 8) {
-                    Image(systemName: session.agent.symbol)
-                        .font(.system(size: 10))
-                        .foregroundStyle(session.agent.tint)
-                    Text(session.displayName)
-                        .font(.system(size: 11, weight: .medium))
-                        .foregroundStyle(OrkTheme.cream)
-                    Text(session.worktreeBranch ?? URL(fileURLWithPath: session.directory).lastPathComponent)
-                        .font(.system(size: 9.5, design: .monospaced))
-                        .foregroundStyle(OrkTheme.stone)
-                        .lineLimit(1)
-                }
-                .padding(.horizontal, 10)
-                .padding(.vertical, 6)
-                .orkCard(radius: 8)
-                .padding(12)
-            }
-        }
+        AgentCanvasView(workspace: workspace, sessions: sessions)
     }
 
     private var topology: some View {
