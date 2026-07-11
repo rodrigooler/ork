@@ -7,6 +7,7 @@ enum GitService {
         var deletions = 0
         var newFiles = 0
         var ahead = 0
+        var behind = 0
 
         var isClean: Bool { insertions == 0 && deletions == 0 && newFiles == 0 }
     }
@@ -48,7 +49,8 @@ enum GitService {
         return (process.terminationStatus == 0, String(data: data, encoding: .utf8) ?? "")
     }
 
-    /// Uncommitted lines vs HEAD, untracked files, and commits ahead of the base branch.
+    /// Uncommitted lines vs HEAD, untracked files, and commits ahead of and
+    /// behind the base branch (behind = the worktree needs a rebase).
     static func stats(worktree dir: String, baseBranch: String?) -> Stats {
         var stats = Stats()
         let numstat = run(["diff", "--numstat", "HEAD"], in: dir)
@@ -65,9 +67,12 @@ enum GitService {
             stats.newFiles = untracked.output.split(separator: "\n").count
         }
         if let base = baseBranch {
-            let ahead = run(["rev-list", "--count", "\(base)..HEAD"], in: dir)
-            if ahead.ok {
-                stats.ahead = Int(ahead.output.trimmingCharacters(in: .whitespacesAndNewlines)) ?? 0
+            // Symmetric difference in one call: "<behind>\t<ahead>".
+            let counts = run(["rev-list", "--left-right", "--count", "\(base)...HEAD"], in: dir)
+            if counts.ok {
+                let cols = counts.output.split(whereSeparator: { $0 == "\t" || $0 == " " || $0 == "\n" })
+                stats.behind = cols.count > 0 ? Int(cols[0]) ?? 0 : 0
+                stats.ahead = cols.count > 1 ? Int(cols[1]) ?? 0 : 0
             }
         }
         return stats

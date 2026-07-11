@@ -146,9 +146,12 @@ struct SessionCard: View {
                 if stats.ahead > 0 {
                     Text("↑\(stats.ahead)").foregroundStyle(OrkTheme.clay)
                 }
+                if stats.behind > 0 {
+                    Text("↓\(stats.behind)").foregroundStyle(OrkTheme.brick)
+                }
             }
             .font(.system(size: 9, design: .monospaced))
-            .help("Uncommitted: +\(stats.insertions) −\(stats.deletions), \(stats.newFiles) new files · \(stats.ahead) commits ahead of base")
+            .help("Uncommitted: +\(stats.insertions) −\(stats.deletions), \(stats.newFiles) new files · \(stats.ahead) ahead of base, \(stats.behind) behind (needs rebase)")
         }
     }
 
