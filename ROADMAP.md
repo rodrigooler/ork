@@ -2,11 +2,24 @@
 
 Priorities for ork, in order. Items move up or down based on real usage; open an issue if something here matters to you.
 
-## Next (0.9)
+## Next (1.0)
 
+- **MCP bridge for teams**: expose the board, roster and outbox as an MCP server so agents message each other through tool calls instead of shell echoes.
 - **Agent tool timeline**: live tool events per session by tailing the agent's transcript, AgentPeek style, in the notch and session cards.
 - **Custom team roles**: editable per-member role prompts from the team pane. Coordinator and member roles shipped in 0.5.0.
 - **Console history**: recall past queries per connection.
+
+## Shipped in 0.9.0
+
+- Quiescence-gated delivery: team messages wait until the recipient's process group is CPU-quiet before being typed into its PTY, so text stops getting swallowed by TUI repaints mid-turn. Identical repeats within a minute deliver once.
+- Orphaned-task alert: a member leaving or exiting with open board tasks flags the ids to the coordinator. A watchdog nudges owners once after 30 minutes without done or blocked.
+- Protocol v3.2: backlog dependencies with '(after <id>)', a team artifacts/ dir for payloads too big for a message, and an integration gate (coordinator pushes and opens one PR per approved task with `gh pr create`).
+- Kanban strip in the team pane: Backlog, In progress and Done columns with counts above the raw board.
+- Agent canvas: the flow view's canvas mode draws the team as a card tree with live mini terminals, a crown on the coordinator and a pulse on message routes.
+- Session cards show commits behind base (needs rebase) next to the ahead chip.
+- Auto-hibernate: optional, a session frozen for 30 minutes ends its process and resumes the conversation on click.
+- Usage by project: the usage card breaks the token total down per project directory.
+- Kilo Code as a built-in agent, plus official icons for Grok and Kilo Code.
 
 ## Shipped in 0.8.1
 
