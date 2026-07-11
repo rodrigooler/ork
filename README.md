@@ -20,9 +20,9 @@ Terminal agents multiplied, and running four of them across ad hoc terminal tabs
 
 ## Features
 
-- **Workspaces and organizations**: register project folders and group them by company or context; each workspace runs its own agent fleet.
+- **Workspaces and organizations**: register project folders and group them by company or context; each workspace runs its own agent fleet. Drag to reorder projects and organizations in the sidebar.
 - **Agent sessions**: spawn Claude Code, Codex, OpenCode, Gemini CLI, Grok or a plain shell in one click; add your own agents via `agents.json`.
-- **Agent teams**: join terminals into a team; Ork routes terminal-to-terminal messages, a shared `board.md` holds common context, and a team pane shows members, board and message log. Message shapes, a char cap and per-recipient batching keep the token spend low.
+- **Agent teams**: join terminals into a team; Ork routes terminal-to-terminal messages, a shared `board.md` holds common context, and a team pane shows members, board and message log. Message shapes, a char cap and per-recipient batching keep the token spend low. The coordinator reviews each delivery in the owner's worktree before accepting it, free members pull the next task from a shared backlog, agents park themselves when done, and finished demands archive to a history folder.
 - **Worktree isolation**: each session runs on its own branch in a dedicated worktree, created with plain `git worktree add`.
 - **Git pane**: commit graph, worktree strip and diff viewer; merge a worktree into its base branch or prune it without leaving the app. Session cards show uncommitted diff stats and commits ahead.
 - **Terminal grid, stack and focus mode**: all sessions side by side, or a tab strip with one terminal expanded and the rest collapsed but alive; isolate one terminal over a dimmed backdrop, live PTY intact.
@@ -32,7 +32,8 @@ Terminal agents multiplied, and running four of them across ad hoc terminal tabs
 - **Data pane per project**: register the Postgres and Redis each project talks to, with a live reachability probe and built-in query consoles.
 - **Usage dashboard**: token usage from your Claude Code transcripts, 14 day chart.
 - **Menu bar companion and notch glance**: running agents, today's tokens and exit notifications in the menu bar; hover the MacBook notch for a quick panel.
-- **Agent-friendly input**: Shift+Enter inserts a newline, Ctrl+Backspace deletes a word, Cmd+Backspace kills the line; paste (Ctrl+V) or drop an image and its path is typed into the prompt, ready for the agent to read.
+- **Agent-friendly input**: Shift+Enter inserts a newline, Ctrl+Backspace deletes a word, Cmd+Backspace kills the line; paste (Ctrl+V) or drop an image and its path is typed into the prompt, ready for the agent to read. Scrollback stays where you put it while agents stream; Shift+wheel and Shift+drag reach ork's scrollback and selection even when the CLI captures the mouse, and Cmd+click opens links.
+- **Privacy mode**: one toggle narrows the sidebar, menu bar and notch to the current project's organization, so a screen recording for one client never shows the others.
 - **Settings** (Cmd+,): dark or light theme, terminal font and size, worktree default, idle freeze, notifications, custom agents.
 
 ## Install
@@ -112,7 +113,7 @@ Design decisions and trade-offs live in [docs/DESIGN.md](docs/DESIGN.md).
 
 ## Roadmap
 
-The plan lives in [ROADMAP.md](ROADMAP.md). Next up: a message box to talk to the agent team from the team pane, custom team roles, and console history.
+The plan lives in [ROADMAP.md](ROADMAP.md). Next up: agent tool timeline, custom team roles, and console history.
 
 ## Inspiration
 

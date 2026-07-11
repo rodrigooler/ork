@@ -2,11 +2,20 @@
 
 Priorities for ork, in order. Items move up or down based on real usage; open an issue if something here matters to you.
 
-## Next (0.7)
+## Next (0.8)
 
 - **Agent tool timeline**: live tool events per session by tailing the agent's transcript, AgentPeek style, in the notch and session cards.
 - **Custom team roles**: editable per-member role prompts from the team pane. Coordinator and member roles shipped in 0.5.0.
 - **Console history**: recall past queries per connection.
+
+## Shipped in 0.7.0
+
+- Team protocol v2: coordinator reviews every delivery in the owner's worktree ('approved' or 'rework', two rounds then escalate to the user), tasks live in a shared backlog and free members claim the next ones themselves, done agents park themselves with a 'sleep' control message.
+- Board history: 'archive <summary>' snapshots a finished demand into history/ and resets the board, keeping decisions.
+- Members roster with worktree paths (members.md), refreshed on join, leave, rename and exit.
+- SwiftTerm 1.14: scrollback stays where you put it while agents stream, wheel reaches the CLI when it asks for the mouse, Shift+wheel and Shift+drag stay local, Cmd+click opens links.
+- Privacy mode: one toggle narrows sidebar, menu bar and notch to the current project's organization.
+- Sidebar drag reordering for projects and organizations.
 
 ## Shipped in 0.6.0
 

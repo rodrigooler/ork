@@ -410,7 +410,7 @@ struct SidebarView: View {
                     .foregroundStyle(OrkTheme.faint)
             }
             Spacer()
-            Text("v0.4.0")
+            Text("v0.7.0")
                 .font(.system(size: 9, design: .monospaced))
                 .foregroundStyle(OrkTheme.faint)
         }
