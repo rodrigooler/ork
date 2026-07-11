@@ -87,7 +87,7 @@ final class TeamService {
         Send: echo "text" > "\(dir)/outbox/\(name)__MEMBER__$RANDOM.md" (MEMBER = teammate name, or 'all' to broadcast). \
         Incoming messages appear in your input as [team msg from NAME]. Protocol, follow strictly: \
         (1) Message shapes: 'task <id>: one-line goal, spec stays in the Backlog' | 'claim <id>' | 'done <id>: one-line verified outcome' | 'rework <id>: concrete problems' | 'approved <id>: what was verified' | 'blocked <id>: reason'. \
-        (2) Max \(Self.messageCharCap) chars per message; code, diffs and logs go in commits or on the board, messages carry pointers (file:line, board section). Never send bare acknowledgements ('ok', 'received', 'starting'): silence means received, every message costs the recipient a full turn. \
+        (2) Max \(Self.messageCharCap) chars per message; code, diffs and logs go in commits or on the board, messages carry pointers (file:line, board section). Payloads too big for the board (full logs, long diffs) go to files under "\(dir)/artifacts/" and the message carries the path. Never send bare acknowledgements ('ok', 'received', 'starting'): silence means received, every message costs the recipient a full turn. \
         (3) The board is the single source of truth: '## Backlog' holds unclaimed tasks and only the coordinator writes it; '## Tasks' holds claimed work as '- [ ] id: task — owner'; in '## Status' keep ONE line per member and overwrite your own; approved rounds move to '## Archive'; never restate board content in messages. \
         (4) Report only what you verified by running or reading; mark guesses 'unverified'; never invent or assume teammate results. \
         (5) 'ork' as MEMBER addresses the app itself, not a teammate: send it 'sleep' to park your terminal, 'escalate <id>: reason' to alert the human user, or (coordinator only) 'archive <one-line demand summary>' to snapshot the finished board into history/ and reset it ('## Decisions' survives). \
@@ -98,7 +98,8 @@ final class TeamService {
     static let coordinatorRole = """
     You are the COORDINATOR: you decompose, assign, review and decide, and you never implement \
     tasks yourself; if a task looks quick enough to just do, it goes in the Backlog like any other. \
-    First decompose the WHOLE demand into '## Backlog' (every task: id, goal, files, done-criteria) \
+    First decompose the WHOLE demand into '## Backlog' (every task: id, goal, files, done-criteria; \
+    append '(after <id>)' when a task depends on another) \
     before assigning anything, then seed each member their first task by 'task <id>' message and \
     leave the rest for members to claim; never poll for status, and do not reply to 'claim' unless \
     the task is already taken. A 'done <id>' is a request for review, not proof: in the owner's \
@@ -127,7 +128,8 @@ final class TeamService {
         the result); expect a real review, your diff will be read and your tests re-run. \
         Be proactive: when free, take the next open task from '## Backlog' \
         yourself, announce 'claim <id>' to the coordinator and start at once without waiting for \
-        a reply; if told the task is already taken, drop that work and claim another. When the \
+        a reply; skip tasks marked '(after <id>)' until that task is approved; if told the task \
+        is already taken, drop that work and claim another. When the \
         Backlog is empty and nothing is pending on you, send 'sleep' to ork without announcing it. \
         Sleeping or getting frozen is normal; any incoming message wakes you, just act on it.
         """
@@ -141,6 +143,8 @@ final class TeamService {
     func ensureTeam(workspaceID: UUID, workspaceName: String) {
         let fm = FileManager.default
         try? fm.createDirectory(at: Self.outboxURL(workspaceID), withIntermediateDirectories: true)
+        try? fm.createDirectory(at: Self.teamDir(workspaceID).appendingPathComponent("artifacts", isDirectory: true),
+                                withIntermediateDirectories: true)
         let board = Self.boardURL(workspaceID)
         if !fm.fileExists(atPath: board.path) {
             try? Self.boardTemplate(workspaceName: workspaceName).write(to: board, atomically: true, encoding: .utf8)
@@ -169,6 +173,8 @@ final class TeamService {
 
         Shapes: task <id> | claim <id> | done <id>: outcome | rework <id>: problems | approved <id> | blocked <id>: reason.
         Max \(messageCharCap) chars per message; details live on the board or in commits, messages carry pointers.
+        Payloads too big for the board go to files under \(dir)/artifacts/; the message carries the path.
+        Backlog tasks marked '(after <id>)' wait until that task is approved.
         No acknowledgements: silence means received; every message costs the recipient a full turn.
         board.md is the single source of truth; read it before starting any task.
         Members rebase onto the base branch before 'done'; the coordinator integrates approved
@@ -185,7 +191,7 @@ final class TeamService {
         Forgot how to message teammates? Read protocol.md in this folder.
 
         ## Backlog
-        <!-- unclaimed tasks, coordinator writes: - [ ] id: goal, files, done-criteria -->
+        <!-- unclaimed tasks, coordinator writes: - [ ] id: goal, files, done-criteria, '(after <id>)' if dependent -->
 
         ## Tasks
         <!-- claimed work only: - [ ] id: task — owner ; approved rounds move to Archive -->

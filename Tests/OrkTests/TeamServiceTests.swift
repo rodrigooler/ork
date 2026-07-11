@@ -229,6 +229,18 @@ final class TeamServiceTests: XCTestCase {
         XCTAssertFalse(TeamService.isQuiet(cpuDelta: 0.5, window: 2))
     }
 
+    func testProtocolCarriesDependenciesAndArtifacts() {
+        XCTAssertTrue(TeamService.coordinatorRole.contains("(after <id>)"))
+        XCTAssertTrue(TeamService.memberRole(coordinator: "claude-1a2b").contains("(after <id>)"))
+        let recovery = TeamService.protocolText(dir: "/tmp/team")
+        XCTAssertTrue(recovery.contains("/tmp/team/artifacts/"))
+        XCTAssertTrue(recovery.contains("(after <id>)"))
+        XCTAssertTrue(TeamService.boardTemplate(workspaceName: "acme").contains("(after <id>)"))
+        let workspace = Workspace(id: UUID(), name: "acme", path: "/tmp/acme", organizationID: nil)
+        let briefing = TeamService.shared.briefing(for: member("claude", workspace.id), workspace: workspace, teammates: [])
+        XCTAssertTrue(briefing.contains("artifacts/"))
+    }
+
     func testOpenTaskIDsFindOnlyTheDepartedOwnersUncheckedTasks() {
         let board = """
         # Team Board — acme
