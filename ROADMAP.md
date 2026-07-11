@@ -2,11 +2,19 @@
 
 Priorities for ork, in order. Items move up or down based on real usage; open an issue if something here matters to you.
 
-## Next (0.8)
+## Next (0.9)
 
 - **Agent tool timeline**: live tool events per session by tailing the agent's transcript, AgentPeek style, in the notch and session cards.
 - **Custom team roles**: editable per-member role prompts from the team pane. Coordinator and member roles shipped in 0.5.0.
 - **Console history**: recall past queries per connection.
+
+## Shipped in 0.8.0
+
+- Team protocol v3: a standing protocol.md next to the board so agents recover the messaging recipe after context compaction, a coordinator that never implements and decomposes the whole demand before assigning, a real review gate (read the diff, run build and tests, check every done-criterion, hunt edge cases and security holes), and a no-acknowledgement message economy.
+- Rebrief button in the team pane: push protocol updates to a live team without disbanding it.
+- In-app updates: ork checks GitHub on launch and a sidebar button swaps the app in place and relaunches.
+- Real Ork.app bundle with a Finder icon, plus a curl installer (install.sh) into /Applications.
+- User messages to the team are exempt from the agent char cap, and failed user deliveries surface in the event feed instead of vanishing.
 
 ## Shipped in 0.7.0
 
@@ -36,7 +44,7 @@ Priorities for ork, in order. Items move up or down based on real usage; open an
 - **Observability pane**: Loki queries, Tempo traces, Grafana links and OpenTelemetry status per project.
 - **Queue endpoints**: RabbitMQ and Kafka reachability and basic inspection in the data pane.
 - **Draggable flow canvas**: free node placement plus live agent status parsed from the terminal stream.
-- **Proper `.app` bundle**: signed and notarized releases, real app icon, native notifications instead of osascript.
+- **Notarized releases**: Developer ID signing and notarization, native notifications instead of osascript. The `.app` bundle and Finder icon shipped in 0.8.0, ad-hoc signed.
 - **Notch on external displays**: the glance panel only attaches to the built-in screen today.
 - **Scrollable terminal grid**: keep cells usable past six concurrent sessions.
 
