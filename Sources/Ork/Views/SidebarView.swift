@@ -430,7 +430,7 @@ struct SidebarView: View {
                     .font(.system(size: 9, weight: .medium, design: .monospaced))
                     .foregroundStyle(OrkTheme.moss)
             }
-            .buttonStyle(.plain)
+            .buttonStyle(.pressable)
             .help("Download ork \(version), swap the app in place and relaunch")
         case .installing:
             Text("updating…")

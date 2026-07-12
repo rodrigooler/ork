@@ -222,7 +222,7 @@ struct GitPane: View {
                         .padding(.vertical, 5)
                         .orkCard(radius: 7, fill: selection == .worktree(worktree) ? OrkTheme.overlay : OrkTheme.raised)
                     }
-                    .buttonStyle(.plain)
+                    .buttonStyle(.pressable)
                     .help(worktree.path)
                 }
                 if snapshot.worktrees.count <= 1 {

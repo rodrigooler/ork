@@ -2,12 +2,19 @@
 
 Priorities for ork, in order. Items move up or down based on real usage; open an issue if something here matters to you.
 
-## Next (0.11)
+## Next (0.12)
 
-- **Notch actions**: answer plans, questions and permission prompts without leaving the notch.
-- **Usage limit windows**: rate-limit windows and monthly spend per agent, where the CLI exposes them.
 - **Tool timeline on session cards**: the notch shows it since 0.10.0; cards next.
 - **MCP bridge beyond claude**: other CLIs as they grow per-invocation MCP config flags.
+- **Prompt watch beyond claude**: recognize codex and gemini choice prompts in the notch.
+
+## Shipped in 0.11.0
+
+- Answer from the notch: claude choice prompts (permissions, plan approval, questions) show up on the session row with clickable options; while the panel is open, the number keys and esc answer without a window switch. The collapsed bar flips to a "waiting on you" counter when an agent is blocked.
+- Limits before they land: a header strip with codex rate windows read from its session logs (real percentages and reset times), claude 5h and 7d token counts, an estimated month spend from local pricing math, and the 14 day token total.
+- Rich session rows in the notch: model, output and context tokens, git stats, time since last activity and the live tool call, per session.
+- Quick actions on hover (sleep, wake, hibernate) and a message field that talks to a live team as 'user' without opening the team pane.
+- Design pass across the app: press feedback on every actionable chip and icon button, state changes respect Reduce Motion with short fades, answered prompts land in the event feed.
 
 ## Shipped in 0.10.1
 

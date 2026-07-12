@@ -16,6 +16,7 @@ struct AgentUsage {
     var last5h = 0        // rolling window, real timestamps
     var last7d = 0
     var projects: [Project] = []  // window total per project dir, biggest first
+    var monthCost: Double?  // estimated USD this calendar month; nil when no priced model appeared
 
     var total: Int { days.reduce(0) { $0 + $1.tokens } }
     var today: Int { days.last?.tokens ?? 0 }
@@ -47,11 +48,27 @@ enum UsageService {
             }
 
             let id: String?
+            let model: String?
             let usage: Usage?
         }
 
         let timestamp: String?
         let message: Message?
+    }
+
+    /// Published API prices, USD per million tokens, matched by model prefix.
+    /// Cache reads bill at 0.1× input and cache writes at 1.25× input.
+    private static let pricing: [(prefix: String, input: Double, output: Double)] = [
+        ("claude-opus", 15, 75),
+        ("claude-sonnet", 3, 15),
+        ("claude-haiku", 1, 5),
+    ]
+
+    /// Estimated cost of one usage entry; nil for models without a known price.
+    static func costUSD(model: String?, input: Int, output: Int, cacheRead: Int, cacheWrite: Int) -> Double? {
+        guard let model, let price = pricing.first(where: { model.hasPrefix($0.prefix) }) else { return nil }
+        let inputSide = Double(input) + Double(cacheRead) * 0.1 + Double(cacheWrite) * 1.25
+        return (inputSide * price.input + Double(output) * price.output) / 1_000_000
     }
 
     /// Sums token usage from Claude Code transcripts (~/.claude/projects/**/*.jsonl).
@@ -79,8 +96,10 @@ enum UsageService {
         let now = Date()
         let fiveHoursAgo = now.addingTimeInterval(-5 * 3600)
         let sevenDaysAgo = now.addingTimeInterval(-7 * 86400)
+        let monthStart = calendar.date(from: calendar.dateComponents([.year, .month], from: now)) ?? todayStart
         var last5h = 0
         var last7d = 0
+        var monthCost: Double?
 
         for case let url as URL in enumerator {
             guard url.pathExtension == "jsonl" else { continue }
@@ -107,6 +126,15 @@ enum UsageService {
                 projectTokens[projectDir, default: 0] += usage.total
                 if date >= fiveHoursAgo { last5h += usage.total }
                 if date >= sevenDaysAgo { last7d += usage.total }
+                if date >= monthStart, let cost = costUSD(
+                    model: line.message?.model,
+                    input: usage.input_tokens ?? 0,
+                    output: usage.output_tokens ?? 0,
+                    cacheRead: usage.cache_read_input_tokens ?? 0,
+                    cacheWrite: usage.cache_creation_input_tokens ?? 0
+                ) {
+                    monthCost = (monthCost ?? 0) + cost
+                }
             }
         }
         guard foundAny else { return nil }
@@ -120,7 +148,7 @@ enum UsageService {
         let projects = projectTokens
             .map { AgentUsage.Project(name: projectDisplayName($0.key, home: home), tokens: $0.value) }
             .sorted { $0.tokens > $1.tokens }
-        return AgentUsage(days: days, last5h: last5h, last7d: last7d, projects: projects)
+        return AgentUsage(days: days, last5h: last5h, last7d: last7d, projects: projects, monthCost: monthCost)
     }
 
     /// Transcript folders encode the project path with '-' for '/'

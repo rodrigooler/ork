@@ -106,7 +106,7 @@ struct TeamPane: View {
                                 .font(.system(size: 8.5))
                                 .foregroundStyle(member.persona == nil ? OrkTheme.faint : member.agent.tint)
                         }
-                        .buttonStyle(.plain)
+                        .buttonStyle(.pressable)
                         .help(member.persona.map { "Role: \($0)" } ?? "Set a standing role")
                         .popover(isPresented: Binding(
                             get: { roleEditorID == member.id },
@@ -119,7 +119,7 @@ struct TeamPane: View {
                                 .font(.system(size: 8))
                                 .foregroundStyle(OrkTheme.faint)
                         }
-                        .buttonStyle(.plain)
+                        .buttonStyle(.pressable)
                         .help("Remove from team")
                     }
                     .padding(.horizontal, 9)

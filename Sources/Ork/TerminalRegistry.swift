@@ -222,6 +222,18 @@ final class TerminalRegistry: NSObject {
         views[id]?.send(txt: text)
     }
 
+    /// Last rows of the displayed viewport as plain text, top to bottom.
+    /// ponytail: getLine follows user scroll (yDisp); the live bottom is
+    /// unreachable through SwiftTerm's public API, so prompt detection pauses
+    /// while the user is scrolled up — it resumes the moment they return.
+    func visibleTail(_ id: UUID, rows count: Int = 25) -> [String] {
+        guard let view = views[id] else { return [] }
+        let terminal = view.getTerminal()
+        return (max(0, terminal.rows - count)..<terminal.rows).map { row in
+            terminal.getLine(row: row)?.translateToString(trimRight: true) ?? ""
+        }
+    }
+
     /// Hands keyboard focus to a session's terminal (used when entering focus mode).
     func focusTerminal(_ id: UUID) {
         guard let view = views[id] else { return }

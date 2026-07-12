@@ -31,7 +31,7 @@ Terminal agents multiplied, and running four of them across ad hoc terminal tabs
 - **Idle freeze, sleep and hibernate**: a session idling for ten minutes is suspended with SIGSTOP and stops burning CPU; any interaction wakes it. Right-click a terminal to sleep it manually, or hibernate it to free the CLI's memory and resume the conversation later; an optional setting hibernates long-frozen sessions automatically.
 - **Data pane per project**: register the Postgres and Redis each project talks to, with a live reachability probe and built-in query consoles; each connection keeps a recallable query history.
 - **Usage dashboard**: token usage from your Claude Code transcripts, 14 day chart and a per-project breakdown.
-- **Menu bar companion and notch glance**: running agents, today's tokens and exit notifications in the menu bar; hover the MacBook notch for a quick panel with each Claude session's latest tool call.
+- **Menu bar companion and notch glance**: running agents, today's tokens and exit notifications in the menu bar; hover the MacBook notch for a panel with every session's live tool call, model, token counts and git stats, plus rate windows and estimated month spend in the header. When a claude session asks a question, the prompt appears on its row: click an option or press its number key, esc declines, all without switching windows. Hover a row to sleep, wake or hibernate the session, and message a live team as 'user' from the built-in field.
 - **Agent-friendly input**: Shift+Enter inserts a newline, Ctrl+Backspace deletes a word, Cmd+Backspace kills the line; paste (Ctrl+V) or drop an image and its path is typed into the prompt, ready for the agent to read. Scrollback stays where you put it while agents stream; Shift+wheel and Shift+drag reach ork's scrollback and selection even when the CLI captures the mouse, and Cmd+click opens links.
 - **Privacy mode**: one toggle narrows the sidebar, menu bar and notch to the current project's organization, so a screen recording for one client never shows the others.
 - **Settings** (Cmd+,): dark or light theme, terminal font and size, worktree default, idle freeze, notifications, custom agents.
@@ -108,7 +108,9 @@ Sources/Ork/
 ├── FreezeService.swift     SIGSTOP/SIGCONT for idle sessions
 ├── TeamService.swift       team messaging: outbox watcher, routing, board
 ├── MCPBridge.swift         wires claude sessions to the ork-mcp team server
-├── ToolTimelineService.swift  latest tool calls from Claude Code transcripts
+├── ToolTimelineService.swift  tool calls and live telemetry from Claude Code transcripts
+├── PromptWatchService.swift   pending choice prompts in terminal buffers
+├── LimitsService.swift     rate-limit windows from agent CLI session logs
 ├── GitService.swift        git plumbing for the git pane (log, diff, merge)
 ├── GitGraph.swift          commit graph lane assignment
 ├── QueryService.swift      Postgres and Redis query consoles
@@ -126,7 +128,7 @@ Design decisions and trade-offs live in [docs/DESIGN.md](docs/DESIGN.md).
 
 ## Roadmap
 
-The plan lives in [ROADMAP.md](ROADMAP.md). Next up: notch actions, usage limit windows, and the tool timeline on session cards.
+The plan lives in [ROADMAP.md](ROADMAP.md). Next up: the tool timeline on session cards, the MCP bridge beyond claude, and prompt watch for more CLIs.
 
 ## Inspiration
 

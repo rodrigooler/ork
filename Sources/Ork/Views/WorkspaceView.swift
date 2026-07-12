@@ -207,7 +207,7 @@ struct WorkspaceView: View {
                 }
             }
         }
-        .buttonStyle(.plain)
+        .buttonStyle(.pressable)
     }
 
     // MARK: - Grid
@@ -389,7 +389,7 @@ struct SessionTab: View {
                     .strokeBorder(selected ? session.agent.tint.opacity(0.55) : OrkTheme.hairline, lineWidth: 1)
             )
         }
-        .buttonStyle(.plain)
+        .buttonStyle(.pressable)
         .help(session.directory)
     }
 }
