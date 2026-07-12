@@ -2,7 +2,7 @@
 
 Priorities for ork, in order. Items move up or down based on real usage; open an issue if something here matters to you.
 
-## Next (1.0)
+## Next (0.10)
 
 - **MCP bridge for teams**: expose the board, roster and outbox as an MCP server so agents message each other through tool calls instead of shell echoes.
 - **Agent tool timeline**: live tool events per session by tailing the agent's transcript, AgentPeek style, in the notch and session cards.
