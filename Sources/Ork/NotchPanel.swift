@@ -90,6 +90,7 @@ struct NotchOverlay: View {
     let hasNotch: Bool
 
     @State private var isExpanded = false
+    @State private var toolEvents: [UUID: ToolEvent] = [:]
 
     private var live: [TerminalSession] {
         store.sessions.filter { !$0.exited && store.isWorkspaceVisible($0.workspaceID) }
@@ -229,6 +230,13 @@ struct NotchOverlay: View {
         .shadow(color: .black.opacity(0.55), radius: 26, y: 10)
         .contentShape(Rectangle())
         .transition(.move(edge: .top).combined(with: .opacity))
+        .task(id: isExpanded) {
+            guard isExpanded else { return }
+            while !Task.isCancelled {
+                await refreshToolEvents()
+                try? await Task.sleep(nanoseconds: 2_500_000_000)
+            }
+        }
     }
 
     private var header: some View {
@@ -261,6 +269,7 @@ struct NotchOverlay: View {
         return Button {
             openDeck()
         } label: {
+            VStack(alignment: .leading, spacing: 3) {
             HStack(spacing: 8) {
                 Image(systemName: session.agent.symbol)
                     .font(.system(size: 11))
@@ -304,12 +313,36 @@ struct NotchOverlay: View {
                     PulsingDot(color: OrkTheme.moss, size: 5)
                 }
             }
+            if let event = toolEvents[session.id] {
+                Text("\(event.tool)\(event.detail.isEmpty ? "" : " · \(event.detail)")")
+                    .font(.system(size: 9, design: .monospaced))
+                    .foregroundStyle(OrkTheme.stone)
+                    .lineLimit(1)
+                    .padding(.leading, 24)
+            }
+            }
             .padding(.horizontal, 10)
             .padding(.vertical, 7)
             .background(Color.white.opacity(0.04))
             .clipShape(RoundedRectangle(cornerRadius: 9, style: .continuous))
         }
         .buttonStyle(.plain)
+    }
+
+    /// Latest tool call per claude session, polled only while the panel is
+    /// open; transcript tails are read off the main thread.
+    private func refreshToolEvents() async {
+        let targets = live.filter { $0.agent.slug == "claude" && !$0.hibernated }
+            .map { (id: $0.id, dir: $0.directory) }
+        guard !targets.isEmpty else { return }
+        let fresh = await Task.detached(priority: .utility) { () -> [UUID: ToolEvent] in
+            var events: [UUID: ToolEvent] = [:]
+            for target in targets {
+                events[target.id] = ToolTimelineService.recentEvents(directory: target.dir, limit: 1).last
+            }
+            return events
+        }.value
+        toolEvents = fresh
     }
 
     private func stateBadge(_ symbol: String, _ label: String) -> some View {
