@@ -2,12 +2,19 @@
 
 Priorities for ork, in order. Items move up or down based on real usage; open an issue if something here matters to you.
 
-## Next (0.10)
+## Next (0.11)
 
-- **MCP bridge for teams**: expose the board, roster and outbox as an MCP server so agents message each other through tool calls instead of shell echoes.
-- **Agent tool timeline**: live tool events per session by tailing the agent's transcript, AgentPeek style, in the notch and session cards.
-- **Custom team roles**: editable per-member role prompts from the team pane. Coordinator and member roles shipped in 0.5.0.
-- **Console history**: recall past queries per connection.
+- **Notch actions**: answer plans, questions and permission prompts without leaving the notch.
+- **Usage limit windows**: rate-limit windows and monthly spend per agent, where the CLI exposes them.
+- **Tool timeline on session cards**: the notch shows it since 0.10.0; cards next.
+- **MCP bridge beyond claude**: other CLIs as they grow per-invocation MCP config flags.
+
+## Shipped in 0.10.0
+
+- MCP bridge for teams: claude sessions get an `ork` MCP server (team_send, team_board, team_members) and message teammates through tool calls instead of shell echoes. A per-session bridge file keeps join-after-spawn and renames working without a CLI restart; other CLIs keep the echo protocol.
+- Agent tool timeline: the expanded notch shows each claude session's latest tool call, read from the transcript tail.
+- Custom team roles: a pencil chip per member in the team pane edits the standing role, applied to the live terminal and kept for future briefings.
+- Console history: both query consoles record every run per connection and recall past queries from a history menu.
 
 ## Shipped in 0.9.0
 
@@ -57,8 +64,6 @@ Priorities for ork, in order. Items move up or down based on real usage; open an
 
 ## Later
 
-- **Notch actions**: answer plans, questions and permission prompts without leaving the notch.
-- **Usage limit windows**: rate-limit windows and monthly spend per agent, where the CLI exposes them.
 - **Observability pane**: Loki queries, Tempo traces, Grafana links and OpenTelemetry status per project.
 - **Queue endpoints**: RabbitMQ and Kafka reachability and basic inspection in the data pane.
 - **Draggable flow canvas**: free node placement plus live agent status parsed from the terminal stream.

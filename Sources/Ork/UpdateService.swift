@@ -3,7 +3,7 @@ import SwiftUI
 
 enum OrkVersion {
     /// Single source of truth; scripts/package.sh reads it for the bundle.
-    static let current = "0.9.0"
+    static let current = "0.10.0"
 }
 
 /// Checks GitHub for a newer release on launch and, on request, swaps the
