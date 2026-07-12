@@ -12,6 +12,8 @@ struct TeamPane: View {
     @State private var draft = ""
     @State private var recipient = "all"
     @State private var lastStamps: [Date?] = []
+    @State private var roleEditorID: UUID?
+    @State private var roleDraft = ""
 
     private var members: [TerminalSession] {
         store.teamMembers(in: workspace.id)
@@ -97,6 +99,20 @@ struct TeamPane: View {
                                 .foregroundStyle(OrkTheme.faint)
                         }
                         Button {
+                            roleDraft = member.persona ?? ""
+                            roleEditorID = member.id
+                        } label: {
+                            Image(systemName: "person.text.rectangle")
+                                .font(.system(size: 8.5))
+                                .foregroundStyle(member.persona == nil ? OrkTheme.faint : member.agent.tint)
+                        }
+                        .buttonStyle(.plain)
+                        .help(member.persona.map { "Role: \($0)" } ?? "Set a standing role")
+                        .popover(isPresented: Binding(
+                            get: { roleEditorID == member.id },
+                            set: { if !$0 { roleEditorID = nil } }
+                        )) { roleEditor(member) }
+                        Button {
                             store.leaveTeam(member.id)
                         } label: {
                             Image(systemName: "xmark")
@@ -124,6 +140,36 @@ struct TeamPane: View {
             .padding(.horizontal, 12)
             .padding(.vertical, 8)
         }
+    }
+
+    /// Edits the member's standing role (persona): injected into the live
+    /// terminal now and carried into every future team briefing.
+    private func roleEditor(_ member: TerminalSession) -> some View {
+        VStack(alignment: .leading, spacing: 8) {
+            Text("Standing role for \(TeamService.memberName(member))")
+                .font(OrkFont.display(11))
+                .foregroundStyle(OrkTheme.cream)
+            TextEditor(text: $roleDraft)
+                .font(.system(size: 11))
+                .scrollContentBackground(.hidden)
+                .padding(6)
+                .frame(width: 280, height: 84)
+                .background(OrkTheme.well)
+                .clipShape(RoundedRectangle(cornerRadius: 7))
+            HStack {
+                Text("Applied now, kept for future briefings.")
+                    .font(.system(size: 9.5))
+                    .foregroundStyle(OrkTheme.faint)
+                Spacer()
+                Button("Apply") {
+                    store.configureAgent(member.id, persona: roleDraft, model: "", effort: "")
+                    roleEditorID = nil
+                }
+                .controlSize(.small)
+                .keyboardShortcut(.return, modifiers: .command)
+            }
+        }
+        .padding(12)
     }
 
     private var boardView: some View {
