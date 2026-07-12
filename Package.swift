@@ -20,9 +20,18 @@ let package = Package(
             path: "Sources/Ork",
             resources: [.process("Resources")]
         ),
+        .target(
+            name: "OrkMCPCore",
+            path: "Sources/OrkMCPCore"
+        ),
+        .executableTarget(
+            name: "ork-mcp",
+            dependencies: ["OrkMCPCore"],
+            path: "Sources/OrkMCP"
+        ),
         .testTarget(
             name: "OrkTests",
-            dependencies: ["Ork"],
+            dependencies: ["Ork", "OrkMCPCore"],
             path: "Tests/OrkTests"
         )
     ]

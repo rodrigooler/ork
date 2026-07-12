@@ -74,7 +74,13 @@ final class TerminalRegistry: NSObject {
         environment["COLORTERM"] = "truecolor"
 
         let escapedDir = session.directory.replacingOccurrences(of: "'", with: "'\\''")
-        let command = resume ? (session.agent.resumeCommand ?? session.agent.command) : session.agent.command
+        var command = resume ? (session.agent.resumeCommand ?? session.agent.command) : session.agent.command
+        // Team MCP bridge: claude gets the ork server at spawn (tools no-op
+        // until the session joins a team). Only the stock command is safe to
+        // rewrite; other CLIs keep the echo protocol.
+        if session.agent.command == "claude", let mcp = MCPBridge.configPath(for: session.id) {
+            command = command.replacingOccurrences(of: "claude", with: "claude --mcp-config \(shellQuoted(mcp))")
+        }
         let bootstrap = "cd '\(escapedDir)' && \(command)"
         // Interactive login shell (-l -i): CLI installers put PATH exports in
         // ~/.zshrc, which a non-interactive shell skips. Launched from Finder

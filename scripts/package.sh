@@ -14,6 +14,7 @@ swift build -c release
 rm -rf "$APP"
 mkdir -p "$APP/Contents/MacOS" "$APP/Contents/Resources"
 cp .build/release/Ork "$APP/Contents/MacOS/"
+cp .build/release/ork-mcp "$APP/Contents/MacOS/"
 cp -R .build/release/*.bundle "$APP/Contents/Resources/"
 
 # Finder icon from the brand logo.

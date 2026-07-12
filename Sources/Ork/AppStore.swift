@@ -307,6 +307,7 @@ final class AppStore: ObservableObject {
         // coordinator and stops an idle watcher.
         if teamSessionIDs.contains(id) { leaveTeam(id) }
         TerminalRegistry.shared.close(id)
+        MCPBridge.removeAll(id)
         sessions.removeAll { $0.id == id }
         frozenSessionIDs.remove(id)
         freezeStamps[id] = nil
@@ -589,6 +590,7 @@ final class AppStore: ObservableObject {
             text: "you are now named '\(newName)'. Sign outbox files as \(newName)__RECIPIENT__$RANDOM.md; teammates messaging '\(oldName)' get bounced with the roster."
         )
         TeamService.shared.writeMembersFile(workspaceID)
+        MCPBridge.writeBridge(session: sessions[index])
     }
 
     // MARK: - Team (terminal-to-terminal messaging via TeamService)
@@ -605,6 +607,7 @@ final class AppStore: ObservableObject {
         teamSessionIDs.insert(id)
         TeamService.shared.ensureTeam(workspaceID: ws.id, workspaceName: ws.name)
         TeamService.shared.writeMembersFile(ws.id)
+        MCPBridge.writeBridge(session: session)
         let briefing = TeamService.shared.briefing(
             for: session, workspace: ws, teammates: existing.map(TeamService.memberName)
         )
@@ -627,6 +630,7 @@ final class AppStore: ObservableObject {
         guard let ws = workspace(id: workspaceID), !members.isEmpty else { return }
         TeamService.shared.ensureTeam(workspaceID: ws.id, workspaceName: ws.name)
         TeamService.shared.writeMembersFile(ws.id)
+        for member in members { MCPBridge.writeBridge(session: member) }
         for (index, member) in members.enumerated() where !member.hibernated {
             // Coordinator first in the teammate list, so member briefings
             // name the right coordinator.
@@ -658,6 +662,7 @@ final class AppStore: ObservableObject {
         EventFeed.shared.post(symbol: "person.2.slash", tintHex: 0x6F6B62, text: "\(TeamService.memberName(session)) left the team")
         if wasCoordinator { promoteNextCoordinator(in: session.workspaceID) }
         TeamService.shared.writeMembersFile(session.workspaceID)
+        MCPBridge.removeBridge(id)
         TeamService.shared.alertOrphanedTasks(workspaceID: session.workspaceID, departed: TeamService.memberName(session))
         TeamService.shared.stopWatcherIfIdle(session.workspaceID)
         save()

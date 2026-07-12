@@ -85,6 +85,7 @@ final class TeamService {
         If context compaction loses this briefing, re-read "\(dir)/protocol.md". \
         Past demands: "\(dir)/history/", read only when you need old context. \
         Send: echo "text" > "\(dir)/outbox/\(name)__MEMBER__$RANDOM.md" (MEMBER = teammate name, or 'all' to broadcast). \
+        If your tools include the 'ork' MCP server (team_send, team_board, team_members), prefer those over the echo recipe. \
         Incoming messages appear in your input as [team msg from NAME]. Protocol, follow strictly: \
         (1) Message shapes: 'task <id>: one-line goal, spec stays in the Backlog' | 'claim <id>' | 'done <id>: one-line verified outcome' | 'rework <id>: concrete problems' | 'approved <id>: what was verified' | 'blocked <id>: reason'. \
         (2) Max \(Self.messageCharCap) chars per message; code, diffs and logs go in commits or on the board, messages carry pointers (file:line, board section). Payloads too big for the board (full logs, long diffs) go to files under "\(dir)/artifacts/" and the message carries the path. Never send bare acknowledgements ('ok', 'received', 'starting'): silence means received, every message costs the recipient a full turn. \
@@ -162,7 +163,9 @@ final class TeamService {
         """
         # Team protocol (recovery card)
 
-        Your team name is in members.md, in this folder. Send a message by writing a file:
+        Your team name is in members.md, in this folder. If your tools include the 'ork' MCP
+        server, message teammates with team_send (team_board and team_members read the rest).
+        Otherwise send a message by writing a file:
 
             echo "done 3: parser fixed, tests green" > "\(dir)/outbox/YOURNAME__RECIPIENT__$RANDOM.md"
 
