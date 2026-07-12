@@ -134,3 +134,42 @@ enum QueryService {
         return tokens
     }
 }
+
+/// Per-connection console history, most recent first. Its own small JSON so
+/// state.json stays free of console noise.
+enum ConsoleHistory {
+    static let cap = 50
+
+    /// Dedup (a recalled query moves to the top) and cap.
+    static func pushed(_ query: String, onto history: [String]) -> [String] {
+        var next = history.filter { $0 != query }
+        next.insert(query, at: 0)
+        return Array(next.prefix(cap))
+    }
+
+    private static let url: URL = {
+        let dir = FileManager.default.urls(for: .applicationSupportDirectory, in: .userDomainMask)[0]
+            .appendingPathComponent("Ork", isDirectory: true)
+        try? FileManager.default.createDirectory(at: dir, withIntermediateDirectories: true)
+        return dir.appendingPathComponent("console-history.json")
+    }()
+
+    private static var cache: [UUID: [String]]?
+
+    static func queries(for id: UUID) -> [String] {
+        if cache == nil { cache = load() }
+        return cache?[id] ?? []
+    }
+
+    static func record(_ query: String, for id: UUID) {
+        var all = cache ?? load()
+        all[id] = pushed(query, onto: all[id] ?? [])
+        cache = all
+        if let data = try? JSONEncoder().encode(all) { try? data.write(to: url) }
+    }
+
+    private static func load() -> [UUID: [String]] {
+        guard let data = try? Data(contentsOf: url) else { return [:] }
+        return (try? JSONDecoder().decode([UUID: [String]].self, from: data)) ?? [:]
+    }
+}

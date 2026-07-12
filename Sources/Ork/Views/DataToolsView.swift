@@ -227,6 +227,7 @@ struct QueryConsole: View {
                         .controlSize(.small)
                         .disabled(running || input.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty)
                         .keyboardShortcut(.return, modifiers: .command)
+                    historyMenu
                     Text("Cmd+Return runs. Results cap at \(QueryService.rowCap) rows.")
                         .font(.system(size: 9.5))
                         .foregroundStyle(OrkTheme.faint)
@@ -242,6 +243,7 @@ struct QueryConsole: View {
                         .tint(OrkTheme.clay)
                         .controlSize(.small)
                         .disabled(running || input.trimmingCharacters(in: .whitespaces).isEmpty)
+                    historyMenu
                 }
             }
             if !note.isEmpty {
@@ -272,9 +274,28 @@ struct QueryConsole: View {
         .transition(.opacity)
     }
 
+    /// Recall a past query into the editor; failed queries are kept too,
+    /// recall-and-fix is the common loop.
+    private var historyMenu: some View {
+        let recent = ConsoleHistory.queries(for: connection.id)
+        return Menu {
+            ForEach(recent, id: \.self) { query in
+                Button(String(query.prefix(60))) { input = query }
+            }
+        } label: {
+            Image(systemName: "clock.arrow.circlepath")
+                .font(.system(size: 11))
+        }
+        .controlSize(.small)
+        .frame(width: 44)
+        .disabled(recent.isEmpty)
+        .help("Query history for this connection")
+    }
+
     private func run() {
         let query = input.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !query.isEmpty, !running else { return }
+        ConsoleHistory.record(query, for: connection.id)
         running = true
         failed = false
         note = ""
