@@ -184,6 +184,9 @@ struct GitPane: View {
         actionBusy = true
         actionResult = nil
         let repo = workspace.path
+        // A pruned worktree takes its sessions with it: a terminal whose
+        // directory is gone can only die blank at the next cd.
+        store.closeSessions(inDirectory: worktree.path)
         Task {
             await Task.detached(priority: .userInitiated) {
                 WorktreeService.remove(repo: repo, worktreePath: worktree.path, branch: worktree.branch)

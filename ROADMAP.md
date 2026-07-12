@@ -9,6 +9,10 @@ Priorities for ork, in order. Items move up or down based on real usage; open an
 - **Tool timeline on session cards**: the notch shows it since 0.10.0; cards next.
 - **MCP bridge beyond claude**: other CLIs as they grow per-invocation MCP config flags.
 
+## Shipped in 0.10.1
+
+- Sessions whose worktree directory disappeared (pruned outside Ork, disk cleanup) no longer respawn into a blank dead card: they are dropped at restore with an event note, a failing cd now explains itself in the terminal, and pruning a worktree from the git pane closes the sessions living in it first.
+
 ## Shipped in 0.10.0
 
 - MCP bridge for teams: claude sessions get an `ork` MCP server (team_send, team_board, team_members) and message teammates through tool calls instead of shell echoes. A per-session bridge file keeps join-after-spawn and renames working without a CLI restart; other CLIs keep the echo protocol.

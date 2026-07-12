@@ -81,7 +81,8 @@ final class TerminalRegistry: NSObject {
         if session.agent.command == "claude", let mcp = MCPBridge.configPath(for: session.id) {
             command = command.replacingOccurrences(of: "claude", with: "claude --mcp-config \(shellQuoted(mcp))")
         }
-        let bootstrap = "cd '\(escapedDir)' && \(command)"
+        // A failing cd must say why: a silent exit leaves a blank dead card.
+        let bootstrap = "cd '\(escapedDir)' || { echo '[ork] directory missing: \(escapedDir)'; echo '[ork] its worktree was removed; close this card and spawn a fresh session.'; exit 1 }; \(command)"
         // Interactive login shell (-l -i): CLI installers put PATH exports in
         // ~/.zshrc, which a non-interactive shell skips. Launched from Finder
         // the app inherits launchd's bare PATH, so without -i every agent

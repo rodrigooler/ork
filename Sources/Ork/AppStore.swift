@@ -89,11 +89,21 @@ final class AppStore: ObservableObject {
             workspaces = persisted.workspaces
             organizations = persisted.organizations
             connections = persisted.connections
-            sessions = persisted.sessions
-            teamSessionIDs = Set(persisted.teamSessionIDs)
+            // A session whose directory vanished (worktree pruned outside
+            // Ork, disk cleanup) would only respawn into a failing cd and a
+            // blank dead card; drop it and say so instead.
+            sessions = persisted.sessions.filter { session in
+                let alive = FileManager.default.fileExists(atPath: session.directory)
+                if !alive {
+                    EventFeed.shared.post(symbol: "trash", tintHex: 0xC96A5F,
+                                          text: "\(session.displayName) dropped: its directory is gone")
+                }
+                return alive
+            }
+            teamSessionIDs = Set(persisted.teamSessionIDs).intersection(Set(sessions.map(\.id)))
             // These sessions had a live CLI before the last quit; relaunch
             // them with the agent's resume command so the conversation returns.
-            restoredSessionIDs = Set(persisted.sessions.map(\.id))
+            restoredSessionIDs = Set(sessions.map(\.id))
         }
         selection = workspaces.first.map { .workspace($0.id) }
         TeamService.shared.store = self
@@ -315,6 +325,14 @@ final class AppStore: ObservableObject {
         if focusedSessionID == id { focusedSessionID = nil }
         if focusModeSessionID == id { focusModeSessionID = nil }
         save()
+    }
+
+    /// Worktree removed from the git pane: every session living in it goes
+    /// through the normal close flow (team leave note included).
+    func closeSessions(inDirectory dir: String) {
+        for session in sessions.filter({ $0.directory == dir }) {
+            closeSession(session.id)
+        }
     }
 
     func closeSessionAndRemoveWorktree(_ id: UUID) {
