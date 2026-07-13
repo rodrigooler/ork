@@ -43,6 +43,13 @@ final class AppStore: ObservableObject {
     /// approval-gated orchestration tools (see OrchestrationService).
     @Published private(set) var managerSessionIDs: Set<UUID> = []
 
+    /// Workspaces whose team runs improvement cycles on its own; every idea
+    /// still passes the proposal gate and the PR gate before landing.
+    @Published private(set) var autopilotWorkspaceIDs: Set<UUID> = []
+    private var autopilotTimer: Timer?
+    private var autopilotLastCycle: [UUID: Date] = [:]
+    private var autopilotCheckInFlight = false
+
     /// Below this share of one core, a CLI is repainting its TUI, not working.
     private static let idleCPUFraction = 0.06
     private static let freezePollInterval: TimeInterval = 30
@@ -60,14 +67,16 @@ final class AppStore: ObservableObject {
         var sessions: [TerminalSession]
         var teamSessionIDs: [UUID]
         var managerSessionIDs: [UUID]
+        var autopilotWorkspaceIDs: [UUID]
 
-        init(workspaces: [Workspace], organizations: [Organization], connections: [DBConnection], sessions: [TerminalSession], teamSessionIDs: [UUID], managerSessionIDs: [UUID]) {
+        init(workspaces: [Workspace], organizations: [Organization], connections: [DBConnection], sessions: [TerminalSession], teamSessionIDs: [UUID], managerSessionIDs: [UUID], autopilotWorkspaceIDs: [UUID]) {
             self.workspaces = workspaces
             self.organizations = organizations
             self.connections = connections
             self.sessions = sessions
             self.teamSessionIDs = teamSessionIDs
             self.managerSessionIDs = managerSessionIDs
+            self.autopilotWorkspaceIDs = autopilotWorkspaceIDs
         }
 
         init(from decoder: Decoder) throws {
@@ -78,6 +87,7 @@ final class AppStore: ObservableObject {
             sessions = (try? container.decode([TerminalSession].self, forKey: .sessions)) ?? []
             teamSessionIDs = (try? container.decode([UUID].self, forKey: .teamSessionIDs)) ?? []
             managerSessionIDs = (try? container.decode([UUID].self, forKey: .managerSessionIDs)) ?? []
+            autopilotWorkspaceIDs = (try? container.decode([UUID].self, forKey: .autopilotWorkspaceIDs)) ?? []
         }
     }
 
@@ -109,6 +119,7 @@ final class AppStore: ObservableObject {
             }
             teamSessionIDs = Set(persisted.teamSessionIDs).intersection(Set(sessions.map(\.id)))
             managerSessionIDs = Set(persisted.managerSessionIDs).intersection(Set(sessions.map(\.id)))
+            autopilotWorkspaceIDs = Set(persisted.autopilotWorkspaceIDs).intersection(Set(persisted.workspaces.map(\.id)))
             // These sessions had a live CLI before the last quit; relaunch
             // them with the agent's resume command so the conversation returns.
             restoredSessionIDs = Set(sessions.map(\.id))
@@ -139,6 +150,68 @@ final class AppStore: ObservableObject {
         }
         pollStats()
         OrchestrationService.shared.start(store: self)
+        autopilotTimer = Timer.scheduledTimer(withTimeInterval: 60, repeats: true) { [weak self] _ in
+            self?.pollAutopilot()
+        }
+        autopilotTimer?.tolerance = 10
+    }
+
+    // MARK: - Autopilot (continuous improvement cycles, twice gated)
+
+    func toggleAutopilot(_ workspaceID: UUID) {
+        if autopilotWorkspaceIDs.remove(workspaceID) == nil {
+            autopilotWorkspaceIDs.insert(workspaceID)
+            autopilotLastCycle[workspaceID] = nil
+            EventFeed.shared.post(symbol: "sparkles", tintHex: 0x7FA65A, text: "autopilot on: cycles every \(OrkSettings.shared.autopilotCycleMinutes) min")
+        } else {
+            EventFeed.shared.post(symbol: "sparkles", text: "autopilot off")
+        }
+        save()
+    }
+
+    /// Once a minute, start any due cycle. The token check reads every recent
+    /// transcript, so it runs off the main thread and only when a cycle is due.
+    private func pollAutopilot() {
+        guard !autopilotCheckInFlight else { return }
+        let interval = TimeInterval(OrkSettings.shared.autopilotCycleMinutes * 60)
+        let due = autopilotWorkspaceIDs.filter { workspaceID in
+            let elapsed = autopilotLastCycle[workspaceID].map { Date().timeIntervalSince($0) } ?? .infinity
+            return elapsed >= interval && !teamMembers(in: workspaceID).isEmpty
+        }
+        guard !due.isEmpty else { return }
+        autopilotCheckInFlight = true
+        let ceiling = OrkSettings.shared.autopilotTokenCeiling
+        Task.detached(priority: .utility) { [weak self] in
+            let spent = UsageService.claudeCode(daysBack: 2)?.last5h ?? 0
+            await MainActor.run {
+                guard let self else { return }
+                self.autopilotCheckInFlight = false
+                for workspaceID in due {
+                    // Stamp either way: above the ceiling the next attempt
+                    // waits a full interval instead of re-scanning every minute.
+                    self.autopilotLastCycle[workspaceID] = Date()
+                    if spent > ceiling {
+                        EventFeed.shared.post(symbol: "sparkles", tintHex: 0xC96A5F,
+                                              text: "autopilot cycle skipped: \(TokenFormat.compact(spent)) in 5h, ceiling \(TokenFormat.compact(ceiling))")
+                    } else {
+                        self.runAutopilotCycle(workspaceID)
+                    }
+                }
+            }
+        }
+    }
+
+    private func runAutopilotCycle(_ workspaceID: UUID) {
+        let members = teamMembers(in: workspaceID)
+        guard let coordinator = members.first else { return }
+        let dir = TeamService.teamDir(workspaceID).path
+        wake(coordinator.id)
+        TeamService.shared.notify(
+            memberNamed: TeamService.memberName(coordinator), in: members,
+            text: "[autopilot cycle] Review the project for real improvements (bugs, test gaps, docs drift, small features the roadmap implies). Write each as ONE file under \(dir)/proposals/ named <millis>.md: first line '# title', then rationale, scope and estimated size. Never implement without an approved proposal; approvals arrive as messages. Read \(dir)/learnings.md first and append durable discoveries to it; never re-propose a rejected idea. Nothing worth proposing means do nothing."
+        )
+        EventFeed.shared.post(symbol: "sparkles", tintHex: 0x7FA65A,
+                              text: "autopilot cycle sent to \(TeamService.memberName(coordinator))")
     }
 
     private func save() {
@@ -149,7 +222,8 @@ final class AppStore: ObservableObject {
             connections: connections,
             sessions: live,
             teamSessionIDs: live.map(\.id).filter { teamSessionIDs.contains($0) },
-            managerSessionIDs: live.map(\.id).filter { managerSessionIDs.contains($0) }
+            managerSessionIDs: live.map(\.id).filter { managerSessionIDs.contains($0) },
+            autopilotWorkspaceIDs: Array(autopilotWorkspaceIDs)
         )
         try? JSONEncoder().encode(persisted).write(to: stateURL, options: .atomic)
     }

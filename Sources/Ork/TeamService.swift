@@ -93,6 +93,7 @@ final class TeamService {
         (3) The board is the single source of truth: '## Backlog' holds unclaimed tasks and only the coordinator writes it; '## Tasks' holds claimed work as '- [ ] id: task — owner'; in '## Status' keep ONE line per member and overwrite your own; approved rounds move to '## Archive'; never restate board content in messages. \
         (4) Report only what you verified by running or reading; mark guesses 'unverified'; never invent or assume teammate results. \
         (5) 'ork' as MEMBER addresses the app itself, not a teammate: send it 'sleep' to park your terminal, 'escalate <id>: reason' to alert the human user, or (coordinator only) 'archive <one-line demand summary>' to snapshot the finished board into history/ and reset it ('## Decisions' survives). \
+        (6) If "\(dir)/learnings.md" exists, read it when starting a demand and append durable, non-obvious project discoveries; never repeat an idea recorded there as rejected. \
         \(role)\(persona) Keep messages short and factual. \(closing)
         """
     }
@@ -165,6 +166,7 @@ final class TeamService {
         try? fm.createDirectory(at: Self.outboxURL(workspaceID), withIntermediateDirectories: true)
         try? fm.createDirectory(at: Self.teamDir(workspaceID).appendingPathComponent("artifacts", isDirectory: true),
                                 withIntermediateDirectories: true)
+        try? fm.createDirectory(at: Self.proposalsDir(workspaceID), withIntermediateDirectories: true)
         let board = Self.boardURL(workspaceID)
         if !fm.fileExists(atPath: board.path) {
             try? Self.boardTemplate(workspaceName: workspaceName).write(to: board, atomically: true, encoding: .utf8)
@@ -279,6 +281,50 @@ final class TeamService {
     /// The cap disciplines agents; the user pastes a long demand on purpose.
     static func overCap(_ content: String, from sender: String) -> Bool {
         sender != "user" && content.count > messageCharCap
+    }
+
+    // MARK: - Proposals (autopilot)
+
+    struct Proposal: Identifiable, Equatable {
+        let id: String  // filename
+        let title: String
+        let url: URL
+    }
+
+    static func proposalsDir(_ workspaceID: UUID) -> URL {
+        teamDir(workspaceID).appendingPathComponent("proposals", isDirectory: true)
+    }
+
+    /// Open proposals, oldest first; the first line of the file is the title.
+    static func openProposals(_ workspaceID: UUID) -> [Proposal] {
+        guard let entries = try? FileManager.default.contentsOfDirectory(at: proposalsDir(workspaceID), includingPropertiesForKeys: nil) else { return [] }
+        return entries.filter { $0.pathExtension == "md" }
+            .sorted { $0.lastPathComponent < $1.lastPathComponent }
+            .map { url in
+                let firstLine = (try? String(contentsOf: url, encoding: .utf8))?
+                    .split(separator: "\n").first.map(String.init) ?? ""
+                let title = firstLine.trimmingCharacters(in: CharacterSet(charactersIn: "#").union(.whitespaces))
+                return Proposal(id: url.lastPathComponent, title: title.isEmpty ? url.lastPathComponent : title, url: url)
+            }
+    }
+
+    /// The root user's verdict: the file moves to approved/ or rejected/ and
+    /// the coordinator hears the outcome; an approved proposal becomes board
+    /// tasks through the normal flow, so the review gate still applies.
+    func decideProposal(_ workspaceID: UUID, proposal: Proposal, approved: Bool) {
+        let fm = FileManager.default
+        let destDir = Self.proposalsDir(workspaceID)
+            .appendingPathComponent(approved ? "approved" : "rejected", isDirectory: true)
+        try? fm.createDirectory(at: destDir, withIntermediateDirectories: true)
+        try? fm.moveItem(at: proposal.url, to: destDir.appendingPathComponent(proposal.id))
+        appendLog(workspaceID, "- [\(Self.timestamp())] user \(approved ? "approved" : "rejected") proposal '\(proposal.title)'")
+        guard let store else { return }
+        let members = store.teamMembers(in: workspaceID)
+        guard let coordinator = members.first else { return }
+        let verdict = approved
+            ? "proposal approved: '\(proposal.title)' (proposals/approved/\(proposal.id)). Decompose it into '## Backlog' tasks and run the normal flow."
+            : "proposal rejected: '\(proposal.title)' (proposals/rejected/\(proposal.id)). Record it in learnings.md and do not propose it again."
+        notify(memberNamed: Self.memberName(coordinator), in: members, text: verdict)
     }
 
     /// Writes an over-cap message whole to the team's artifacts dir and

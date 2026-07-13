@@ -98,6 +98,26 @@ final class TeamServiceTests: XCTestCase {
         XCTAssertTrue(briefing.contains("## Archive"))
     }
 
+    func testProposalsListParseAndDecision() throws {
+        let workspaceID = UUID()
+        defer { try? FileManager.default.removeItem(at: TeamService.teamDir(workspaceID)) }
+        let dir = TeamService.proposalsDir(workspaceID)
+        try FileManager.default.createDirectory(at: dir, withIntermediateDirectories: true)
+        try "# Add retry to the webhook consumer\n\nRationale...".write(
+            to: dir.appendingPathComponent("100.md"), atomically: true, encoding: .utf8)
+        try "no heading first line".write(
+            to: dir.appendingPathComponent("200.md"), atomically: true, encoding: .utf8)
+
+        let open = TeamService.openProposals(workspaceID)
+        XCTAssertEqual(open.map(\.title), ["Add retry to the webhook consumer", "no heading first line"])
+
+        TeamService.shared.decideProposal(workspaceID, proposal: open[0], approved: true)
+        TeamService.shared.decideProposal(workspaceID, proposal: open[1], approved: false)
+        XCTAssertTrue(TeamService.openProposals(workspaceID).isEmpty)
+        XCTAssertTrue(FileManager.default.fileExists(atPath: dir.appendingPathComponent("approved/100.md").path))
+        XCTAssertTrue(FileManager.default.fileExists(atPath: dir.appendingPathComponent("rejected/200.md").path))
+    }
+
     func testSpillLongMessageKeepsTheWholeText() {
         let workspaceID = UUID()
         defer { try? FileManager.default.removeItem(at: TeamService.teamDir(workspaceID)) }

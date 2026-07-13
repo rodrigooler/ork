@@ -135,6 +135,16 @@ private struct BehaviorPane: View {
             Text("Hibernating ends the process and returns its memory; the conversation resumes on click. Applies only to agents with a resume command; manually slept sessions and team members are exempt.")
                 .font(.system(size: 11))
                 .foregroundStyle(.secondary)
+            Divider()
+            Stepper(value: $settings.autopilotCycleMinutes, in: 5...240, step: 5) {
+                Text("Autopilot cycle every \(settings.autopilotCycleMinutes) min")
+            }
+            Stepper(value: $settings.autopilotTokenCeiling, in: 500_000...20_000_000, step: 500_000) {
+                Text("Pause autopilot above \(TokenFormat.compact(settings.autopilotTokenCeiling)) tokens / 5h")
+            }
+            Text("Autopilot (per team, in the team pane) asks the coordinator for improvement proposals on this cycle; you approve or reject each one, and cycles skip while the 5h token window is above the ceiling.")
+                .font(.system(size: 11))
+                .foregroundStyle(.secondary)
         }
         .padding(20)
     }

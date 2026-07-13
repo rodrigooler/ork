@@ -48,6 +48,14 @@ final class OrkSettings: ObservableObject {
     @Published var privacyMode: Bool {
         didSet { defaults.set(privacyMode, forKey: "privacyMode") }
     }
+    @Published var autopilotCycleMinutes: Int {
+        didSet { defaults.set(autopilotCycleMinutes, forKey: "autopilotCycleMinutes") }
+    }
+    /// Claude tokens in the rolling 5h window; above this, autopilot cycles
+    /// are skipped so an unattended team never burns through a rate window.
+    @Published var autopilotTokenCeiling: Int {
+        didSet { defaults.set(autopilotTokenCeiling, forKey: "autopilotTokenCeiling") }
+    }
 
     private let defaults = UserDefaults.standard
 
@@ -62,6 +70,8 @@ final class OrkSettings: ObservableObject {
         notifyOnExit = defaults.object(forKey: "notifyOnExit") as? Bool ?? true
         confirmCloseRunning = defaults.object(forKey: "confirmCloseRunning") as? Bool ?? true
         privacyMode = defaults.object(forKey: "privacyMode") as? Bool ?? false
+        autopilotCycleMinutes = defaults.object(forKey: "autopilotCycleMinutes") as? Int ?? 30
+        autopilotTokenCeiling = defaults.object(forKey: "autopilotTokenCeiling") as? Int ?? 3_000_000
         OrkTheme.light = appearance == .light
     }
 }

@@ -14,6 +14,7 @@ struct TeamPane: View {
     @State private var lastStamps: [Date?] = []
     @State private var roleEditorID: UUID?
     @State private var roleDraft = ""
+    @State private var proposals: [TeamService.Proposal] = []
 
     private var members: [TerminalSession] {
         store.teamMembers(in: workspace.id)
@@ -26,6 +27,10 @@ struct TeamPane: View {
             } else {
                 VStack(spacing: 0) {
                     memberStrip
+                    if !proposals.isEmpty {
+                        Rectangle().fill(OrkTheme.hairline).frame(height: 1)
+                        proposalsStrip
+                    }
                     Rectangle().fill(OrkTheme.hairline).frame(height: 1)
                     HSplitView {
                         boardView.frame(minWidth: 300)
@@ -49,6 +54,7 @@ struct TeamPane: View {
     /// Each tick costs two stat calls; file contents are read (off the main
     /// thread) only when a modification date actually moved.
     private func refresh() async {
+        proposals = TeamService.openProposals(workspace.id)
         let boardURL = TeamService.boardURL(workspace.id)
         let logURL = TeamService.logURL(workspace.id)
         let stamps = [boardURL, logURL].map {
@@ -132,6 +138,13 @@ struct TeamPane: View {
                     .orkCard(radius: 7)
                 }
                 Spacer()
+                Toggle("Autopilot", isOn: Binding(
+                    get: { store.autopilotWorkspaceIDs.contains(workspace.id) },
+                    set: { _ in store.toggleAutopilot(workspace.id) }
+                ))
+                .toggleStyle(.switch)
+                .controlSize(.mini)
+                .help("The team reviews the project on a cycle and files improvement proposals; nothing runs without your approval, and cycles pause above the usage ceiling (Settings)")
                 if !members.contains(where: { store.managerSessionIDs.contains($0.id) }) {
                     Button("Spawn manager") {
                         store.spawnManager(in: workspace)
@@ -151,6 +164,54 @@ struct TeamPane: View {
             }
             .padding(.horizontal, 12)
             .padding(.vertical, 8)
+        }
+    }
+
+    /// Autopilot output waiting on the root user: approve turns a proposal
+    /// into board tasks, reject archives it with a note to the coordinator.
+    private var proposalsStrip: some View {
+        ScrollView(.horizontal, showsIndicators: false) {
+            HStack(spacing: 8) {
+                Text("PROPOSALS")
+                    .font(.system(size: 9, weight: .semibold))
+                    .foregroundStyle(OrkTheme.faint)
+                    .kerning(1.1)
+                ForEach(proposals) { proposal in
+                    HStack(spacing: 6) {
+                        Text(proposal.title)
+                            .font(.system(size: 10.5))
+                            .foregroundStyle(OrkTheme.cream)
+                            .lineLimit(1)
+                            .frame(maxWidth: 260, alignment: .leading)
+                        Button {
+                            TeamService.shared.decideProposal(workspace.id, proposal: proposal, approved: true)
+                            proposals.removeAll { $0.id == proposal.id }
+                        } label: {
+                            Image(systemName: "checkmark.circle")
+                                .font(.system(size: 11))
+                                .foregroundStyle(OrkTheme.moss)
+                        }
+                        .help("Approve: the coordinator decomposes it into board tasks")
+                        Button {
+                            TeamService.shared.decideProposal(workspace.id, proposal: proposal, approved: false)
+                            proposals.removeAll { $0.id == proposal.id }
+                        } label: {
+                            Image(systemName: "xmark.circle")
+                                .font(.system(size: 11))
+                                .foregroundStyle(OrkTheme.brick)
+                        }
+                        .help("Reject: archived, never proposed again")
+                    }
+                    .padding(.horizontal, 9)
+                    .padding(.vertical, 5)
+                    .orkCard(radius: 7)
+                    .buttonStyle(.pressable)
+                    .onTapGesture { NSWorkspace.shared.open(proposal.url) }
+                    .help(proposal.title)
+                }
+            }
+            .padding(.horizontal, 12)
+            .padding(.vertical, 7)
         }
     }
 
