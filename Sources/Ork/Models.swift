@@ -75,6 +75,10 @@ struct TerminalSession: Identifiable, Hashable {
     /// Standing role for this terminal ("security review only"); injected as a
     /// message on apply and carried into the team briefing.
     var persona: String?
+    /// Last model/effort applied through Configure agent; what the CLI actually
+    /// runs can drift (in-CLI switches are invisible to Ork).
+    var configuredModel: String?
+    var configuredEffort: String?
 
     var shortID: String { String(id.uuidString.prefix(4)).lowercased() }
     var displayName: String { customName ?? agent.name }
@@ -83,6 +87,7 @@ struct TerminalSession: Identifiable, Hashable {
 extension TerminalSession: Codable {
     private enum CodingKeys: String, CodingKey {
         case id, workspaceID, agent, directory, worktreeBranch, exited, hibernated, customName, persona
+        case configuredModel, configuredEffort
     }
 
     // Hand-rolled so state.json files written before a field existed still decode.
@@ -97,6 +102,8 @@ extension TerminalSession: Codable {
         hibernated = try container.decodeIfPresent(Bool.self, forKey: .hibernated) ?? false
         customName = try container.decodeIfPresent(String.self, forKey: .customName)
         persona = try container.decodeIfPresent(String.self, forKey: .persona)
+        configuredModel = try container.decodeIfPresent(String.self, forKey: .configuredModel)
+        configuredEffort = try container.decodeIfPresent(String.self, forKey: .configuredEffort)
     }
 }
 

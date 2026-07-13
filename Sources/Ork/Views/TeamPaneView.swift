@@ -8,13 +8,14 @@ struct TeamPane: View {
     let workspace: Workspace
 
     @State private var board = ""
-    @State private var log: [String] = []
+    @State private var chat: [ChatEntry] = []
     @State private var draft = ""
     @State private var recipient = "all"
     @State private var lastStamps: [Date?] = []
     @State private var roleEditorID: UUID?
     @State private var roleDraft = ""
     @State private var proposals: [TeamService.Proposal] = []
+    @State private var confirmArchive = false
 
     private var members: [TerminalSession] {
         store.teamMembers(in: workspace.id)
@@ -62,13 +63,13 @@ struct TeamPane: View {
         }
         guard stamps != lastStamps else { return }
         lastStamps = stamps
-        let loaded = await Task.detached(priority: .utility) { () -> (String, [String]) in
+        let loaded = await Task.detached(priority: .utility) { () -> (String, [ChatEntry]) in
             let board = (try? String(contentsOf: boardURL, encoding: .utf8)) ?? ""
             let raw = (try? String(contentsOf: logURL, encoding: .utf8)) ?? ""
-            return (board, raw.split(separator: "\n").suffix(200).map(String.init))
+            return (board, TeamChat.parse(raw.split(separator: "\n").suffix(200).map(String.init)))
         }.value
         board = loaded.0
-        log = loaded.1
+        chat = loaded.1
     }
 
     private var emptyState: some View {
@@ -98,12 +99,16 @@ struct TeamPane: View {
             HStack(spacing: 8) {
                 ForEach(members) { member in
                     HStack(spacing: 6) {
-                        Image(systemName: member.agent.symbol)
-                            .font(.system(size: 10))
-                            .foregroundStyle(member.agent.tint)
-                        Text(TeamService.memberName(member))
-                            .font(.system(size: 10.5, weight: .medium, design: .monospaced))
-                            .foregroundStyle(OrkTheme.cream)
+                        MemberAvatar(name: TeamService.memberName(member), size: 18)
+                        VStack(alignment: .leading, spacing: 1) {
+                            Text(TeamService.memberName(member))
+                                .font(.system(size: 10.5, weight: .medium, design: .monospaced))
+                                .foregroundStyle(MemberPalette.color(for: TeamService.memberName(member)))
+                            Text(memberMeta(member))
+                                .font(.system(size: 8.5))
+                                .foregroundStyle(OrkTheme.faint)
+                                .lineLimit(1)
+                        }
                         if member.hibernated {
                             Image(systemName: "moon.zzz")
                                 .font(.system(size: 8.5))
@@ -161,10 +166,33 @@ struct TeamPane: View {
                     NSWorkspace.shared.open(TeamService.boardURL(workspace.id))
                 }
                 .controlSize(.small)
+                Button("Archive board") {
+                    confirmArchive = true
+                }
+                .controlSize(.small)
+                .help("Snapshot the whole board into history/ and reset it; '## Decisions' survives")
+                .confirmationDialog("Archive the board?", isPresented: $confirmArchive) {
+                    Button("Archive and reset") {
+                        TeamService.shared.archiveBoardFromUser(workspace.id)
+                    }
+                } message: {
+                    Text("The full board snapshots into the team's history folder and the working sections reset. '## Decisions' is kept and the coordinator is told.")
+                }
             }
             .padding(.horizontal, 12)
             .padding(.vertical, 8)
         }
+    }
+
+    /// Agent, applied model and effort, then the standing role, whatever fits.
+    private func memberMeta(_ member: TerminalSession) -> String {
+        var parts = [member.agent.name]
+        if let model = member.configuredModel { parts.append(model) }
+        if let effort = member.configuredEffort { parts.append(effort) }
+        if let persona = member.persona {
+            parts.append(String(persona.prefix(36)) + (persona.count > 36 ? "…" : ""))
+        }
+        return parts.joined(separator: " · ")
     }
 
     /// Autopilot output waiting on the root user: approve turns a proposal
@@ -304,26 +332,88 @@ struct TeamPane: View {
         .orkCard(radius: 8)
     }
 
+    /// Discord-shaped read of log.md: flat rows, an avatar per speaker,
+    /// consecutive messages from one sender collapse under it.
     private var logView: some View {
         VStack(alignment: .leading, spacing: 0) {
-            paneTitle("Messages", symbol: "bubble.left.and.bubble.right")
-            ScrollView {
-                LazyVStack(alignment: .leading, spacing: 2) {
-                    if log.isEmpty {
-                        Text("No messages yet.")
-                            .font(.system(size: 11))
+            paneTitle("Chat", symbol: "bubble.left.and.bubble.right")
+            ScrollViewReader { proxy in
+                ScrollView {
+                    LazyVStack(alignment: .leading, spacing: 2) {
+                        if chat.isEmpty {
+                            Text("No messages yet.")
+                                .font(.system(size: 11))
+                                .foregroundStyle(OrkTheme.faint)
+                        }
+                        ForEach(chat) { entry in
+                            chatRow(entry, grouped: isGrouped(entry))
+                                .id(entry.id)
+                        }
+                    }
+                    .padding(12)
+                }
+                .onChange(of: chat.last?.id) { _, last in
+                    if let last { proxy.scrollTo(last, anchor: .bottom) }
+                }
+                .onAppear {
+                    if let last = chat.last?.id { proxy.scrollTo(last, anchor: .bottom) }
+                }
+            }
+        }
+    }
+
+    /// Same sender as the previous message → no repeated avatar or name.
+    private func isGrouped(_ entry: ChatEntry) -> Bool {
+        guard entry.id > 0, entry.id - 1 < chat.count else { return false }
+        let previous = chat[entry.id - 1]
+        return entry.sender != nil && entry.sender == previous.sender
+    }
+
+    @ViewBuilder private func chatRow(_ entry: ChatEntry, grouped: Bool) -> some View {
+        if let sender = entry.sender {
+            HStack(alignment: .top, spacing: 8) {
+                if grouped {
+                    Spacer().frame(width: 22)
+                } else {
+                    MemberAvatar(name: sender, size: 22)
+                        .padding(.top, 2)
+                }
+                VStack(alignment: .leading, spacing: 2) {
+                    if !grouped {
+                        HStack(spacing: 6) {
+                            Text(sender == "user" ? "you" : sender)
+                                .font(.system(size: 11, weight: .semibold))
+                                .foregroundStyle(sender == "user" ? OrkTheme.clay : MemberPalette.color(for: sender))
+                            if let recipient = entry.recipient, recipient != "all" {
+                                Text("→ \(recipient)")
+                                    .font(.system(size: 9.5))
+                                    .foregroundStyle(OrkTheme.faint)
+                            }
+                            Text(entry.time)
+                                .font(.system(size: 9, design: .monospaced))
+                                .foregroundStyle(OrkTheme.faint)
+                        }
+                    }
+                    Text(entry.content)
+                        .font(.system(size: 11))
+                        .foregroundStyle(OrkTheme.cream.opacity(0.9))
+                        .textSelection(.enabled)
+                        .frame(maxWidth: .infinity, alignment: .leading)
+                    ForEach(entry.annotations.indices, id: \.self) { index in
+                        Text(entry.annotations[index])
+                            .font(.system(size: 9.5))
+                            .italic()
                             .foregroundStyle(OrkTheme.faint)
                     }
-                    ForEach(log.indices, id: \.self) { index in
-                        Text(log[index])
-                            .font(.system(size: 10.5, design: .monospaced))
-                            .foregroundStyle(OrkTheme.stone)
-                            .textSelection(.enabled)
-                            .frame(maxWidth: .infinity, alignment: .leading)
-                    }
                 }
-                .padding(12)
             }
+            .padding(.top, grouped ? 0 : 8)
+        } else {
+            Text("\(entry.time) · \(entry.content)")
+                .font(.system(size: 9.5, design: .monospaced))
+                .foregroundStyle(OrkTheme.faint)
+                .frame(maxWidth: .infinity, alignment: .center)
+                .padding(.vertical, 3)
         }
     }
 

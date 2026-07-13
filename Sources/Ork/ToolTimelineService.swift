@@ -99,6 +99,13 @@ struct SessionTelemetry: Equatable {
     var outputTokens = 0   // cumulative for the transcript
     var contextTokens = 0  // input side of the newest message ≈ context size
     var lastActivity: Date?
+
+    /// "claude-opus-4-8-20260115" → "opus-4-8".
+    static func shortModel(_ model: String) -> String {
+        model
+            .replacingOccurrences(of: "claude-", with: "")
+            .replacingOccurrences(of: #"-20\d{6}$"#, with: "", options: .regularExpression)
+    }
 }
 
 /// Reads each transcript once, then only the bytes appended since the last

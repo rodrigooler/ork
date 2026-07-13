@@ -51,6 +51,38 @@ enum OrkTheme {
     }
 }
 
+/// Sessions of one agent share a tint, so an eight-claude team renders eight
+/// identical coral cards; this palette tells members apart by name, in the
+/// chat, the member strip and the canvas. FNV-1a keeps a member's color
+/// stable across launches (String.hashValue is seeded per process).
+enum MemberPalette {
+    static let colors: [Color] = [
+        Color(hex: 0xD98E73), Color(hex: 0x8FB6C9), Color(hex: 0xB48EAD),
+        Color(hex: 0x7FBF9E), Color(hex: 0xE0A458), Color(hex: 0xC97F9D),
+        Color(hex: 0x9BB868), Color(hex: 0x6FA8DC), Color(hex: 0xC9A227),
+        Color(hex: 0x8E9FCB),
+    ]
+
+    static func color(for name: String) -> Color {
+        colors[Int(hash(name) % UInt64(colors.count))]
+    }
+
+    static func hash(_ text: String) -> UInt64 {
+        var hash: UInt64 = 0xcbf2_9ce4_8422_2325
+        for byte in text.utf8 { hash = (hash ^ UInt64(byte)) &* 0x0000_0100_0000_01B3 }
+        return hash
+    }
+
+    /// "Oler - Lead" → "OL"; single word → its first two letters.
+    static func initials(_ name: String) -> String {
+        let words = name.split(separator: " ").filter { $0.first?.isLetter == true }
+        if words.count >= 2, let a = words[0].first, let b = words[1].first {
+            return String([a, b]).uppercased()
+        }
+        return String(name.filter(\.isLetter).prefix(2)).uppercased()
+    }
+}
+
 /// Brand display face — the logo's techno geometry (Orbitron, OFL, bundled).
 /// Headings and caps labels only; body text stays in SF for legibility.
 enum OrkFont {

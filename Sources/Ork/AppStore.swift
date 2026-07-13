@@ -654,12 +654,17 @@ final class AppStore: ObservableObject {
         guard let index = sessions.firstIndex(where: { $0.id == id }) else { return }
         wake(id)
         let persona = rawPersona.trimmingCharacters(in: .whitespacesAndNewlines)
-        if sessions[index].persona != (persona.isEmpty ? nil : persona) {
+        let model = model.trimmingCharacters(in: .whitespaces)
+        let effort = effort.trimmingCharacters(in: .whitespaces)
+        if sessions[index].persona != (persona.isEmpty ? nil : persona)
+            || (!model.isEmpty && sessions[index].configuredModel != model)
+            || (!effort.isEmpty && sessions[index].configuredEffort != effort) {
             sessions[index].persona = persona.isEmpty ? nil : persona
+            if !model.isEmpty { sessions[index].configuredModel = model }
+            if !effort.isEmpty { sessions[index].configuredEffort = effort }
             save()
         }
         var sends: [String] = []
-        let model = model.trimmingCharacters(in: .whitespaces)
         if !model.isEmpty { sends.append("/model \(model)\r") }
         if !effort.isEmpty { sends.append("/effort \(effort)\r") }
         if !persona.isEmpty {

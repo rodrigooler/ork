@@ -119,7 +119,9 @@ final class TeamService {
     Note the PR link or merge in '## Archive'. Members claim work and sleep on their own; your \
     message wakes a sleeping member, so never assume a quiet teammate is gone. When the Backlog is \
     empty and every approved task is integrated, close the demand: send 'archive <one-line \
-    summary>' to ork, then 'sleep'.
+    summary>' to ork, then 'sleep'. Archive between rounds too: when a demand rolls into a new \
+    round, snapshot the finished one the same way first; every agent reads the board often, so a \
+    board carrying old rounds taxes the whole team (history/ keeps everything).
     """
 
     static func memberRole(coordinator: String) -> String {
@@ -337,9 +339,21 @@ final class TeamService {
         return url
     }
 
-    /// The agent canvas highlights routed messages; nil sender means the
-    /// user or the app spoke.
-    var onRoute: ((UUID?, UUID) -> Void)?
+    /// The agent canvas animates routed messages; nil sender means the
+    /// user or the app spoke. The content lets it style completions.
+    var onRoute: ((UUID?, UUID, String) -> Void)?
+
+    /// Protocol shapes make completion detection a prefix read.
+    enum MessageKind {
+        case done, approved, other
+    }
+
+    static func messageKind(_ content: String) -> MessageKind {
+        let lowered = content.lowercased()
+        if lowered.hasPrefix("done ") { return .done }
+        if lowered.hasPrefix("approved ") { return .approved }
+        return .other
+    }
 
     /// Resolves a recipient segment to sessions. Exact name, then 'all'
     /// (minus the sender), then a unique fuzzy match ("b507" finds
@@ -415,7 +429,7 @@ final class TeamService {
                     continue
                 }
                 perTarget[target.id, default: []].append("[team msg from \(parsed.sender)] \(content)")
-                onRoute?(senderID, target.id)
+                onRoute?(senderID, target.id, content)
             }
             if targets.contains(where: { !$0.hibernated }) {
                 routedSummaries.append("\(parsed.sender) → \(parsed.recipient): \(content.prefix(56))")
@@ -559,6 +573,16 @@ final class TeamService {
         }
     }
 
+    /// The canvas cards show what each member is on right now; with several
+    /// open clocks the most recently started one wins.
+    func currentTask(workspaceID: UUID, member: String) -> String? {
+        let prefix = workspaceID.uuidString + "|"
+        return taskClocks
+            .filter { $0.key.hasPrefix(prefix) && $0.value.owner == member }
+            .max { $0.value.started < $1.value.started }
+            .map { String($0.key.dropFirst(prefix.count)) }
+    }
+
     static func dueKeys(in clocks: [String: TaskClock], now: Date) -> [String] {
         clocks.filter { !$0.value.nudged && now.timeIntervalSince($0.value.started) > watchdogThreshold }
             .map(\.key).sorted()
@@ -651,6 +675,13 @@ final class TeamService {
         }
     }
 
+    /// The team pane's Archive button: same path as the coordinator control,
+    /// for when the coordinator never closes the demand and the board rots.
+    func archiveBoardFromUser(_ workspaceID: UUID) {
+        guard let members = store?.teamMembers(in: workspaceID) else { return }
+        archiveBoard(workspaceID, summary: "closed by the user", by: "user", members: members)
+    }
+
     /// Rotates a finished demand out of the hot board: full snapshot into
     /// history/, working sections reset from the template, '## Decisions'
     /// carried over. Every agent reads the board often, so history must not
@@ -674,6 +705,10 @@ final class TeamService {
         EventFeed.shared.post(symbol: "archivebox", text: "\(sender) closed the demand: \(summary.prefix(48))")
         notify(memberNamed: sender, in: members,
                text: "board archived to history/\(filename) and reset; '## Decisions' kept.")
+        if sender == "user", let coordinator = members.first.map(Self.memberName) {
+            notify(memberNamed: coordinator, in: members,
+                   text: "the user archived the board to history/\(filename); it was reset, '## Decisions' kept.")
+        }
     }
 
     /// Fresh board for the next demand; only '## Decisions' survives, it is
@@ -724,6 +759,7 @@ final class TeamService {
     }
 
     func appendLog(_ workspaceID: UUID, _ line: String) {
+        rotateLogIfNeeded(workspaceID)
         let url = Self.logURL(workspaceID)
         let data = Data((line + "\n").utf8)
         if let handle = try? FileHandle(forWritingTo: url) {
@@ -733,6 +769,47 @@ final class TeamService {
         } else {
             try? data.write(to: url)
         }
+    }
+
+    // MARK: - Log rotation
+
+    /// A real team accumulated 208KB of log across eight sprints with nothing
+    /// ever cleaning it. Ork writes the log, so Ork rotates it: past the size
+    /// cap the old lines move to history/ and only the recent tail stays.
+    static let logRotateBytes = 150_000
+    static let logRotateKeep = 200
+
+    func rotateLogIfNeeded(_ workspaceID: UUID) {
+        let url = Self.logURL(workspaceID)
+        guard let size = (try? FileManager.default.attributesOfItem(atPath: url.path)[.size]) as? Int,
+              size > Self.logRotateBytes,
+              let text = try? String(contentsOf: url, encoding: .utf8),
+              let split = Self.splitForRotation(text, keep: Self.logRotateKeep) else { return }
+        let dir = Self.historyDir(workspaceID)
+        try? FileManager.default.createDirectory(at: dir, withIntermediateDirectories: true)
+        let archive = dir.appendingPathComponent("log-\(Self.fileStampFormatter.string(from: Date())).md")
+        if let handle = try? FileHandle(forWritingTo: archive) {
+            // Same-minute rotations concatenate chronologically.
+            defer { try? handle.close() }
+            handle.seekToEndOfFile()
+            handle.write(Data(split.archive.utf8))
+        } else {
+            try? split.archive.write(to: archive, atomically: true, encoding: .utf8)
+        }
+        try? split.tail.write(to: url, atomically: true, encoding: .utf8)
+    }
+
+    /// Oldest lines out, newest `keep` stay; the cut backs up to an entry
+    /// start ("- [") so a message is never split from its continuation or
+    /// annotation lines. Nil when there is nothing worth archiving.
+    static func splitForRotation(_ text: String, keep: Int) -> (archive: String, tail: String)? {
+        let lines = text.components(separatedBy: "\n")
+        guard lines.count > keep + 1 else { return nil }
+        var boundary = lines.count - keep
+        while boundary > 0, !lines[boundary].hasPrefix("- [") { boundary -= 1 }
+        guard boundary > 0 else { return nil }
+        return (lines[..<boundary].joined(separator: "\n") + "\n",
+                lines[boundary...].joined(separator: "\n"))
     }
 
     private static let timeFormatter: DateFormatter = {
