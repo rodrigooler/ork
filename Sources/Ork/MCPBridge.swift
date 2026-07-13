@@ -34,11 +34,16 @@ enum MCPBridge {
         return url.path
     }
 
-    static func writeBridge(session: TerminalSession) {
-        let payload = [
+    static func writeBridge(session: TerminalSession, workspace: Workspace?, manager: Bool) {
+        var payload: [String: Any] = [
             "teamDir": TeamService.teamDir(session.workspaceID).path,
             "member": TeamService.memberName(session),
+            "manager": manager,
         ]
+        if let workspace {
+            payload["workspace"] = workspace.name
+            payload["directory"] = workspace.path
+        }
         guard let data = try? JSONSerialization.data(withJSONObject: payload, options: [.sortedKeys]) else { return }
         try? data.write(to: dir.appendingPathComponent("\(session.id.uuidString).json"))
     }

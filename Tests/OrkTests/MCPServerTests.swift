@@ -43,7 +43,8 @@ final class MCPServerTests: XCTestCase {
         let list = server.handle(["jsonrpc": "2.0", "id": 1, "method": "tools/list"])
         let tools = (list?["result"] as? [String: Any])?["tools"] as? [[String: Any]]
         XCTAssertEqual(tools?.compactMap { $0["name"] as? String }.sorted(),
-                       ["team_board", "team_members", "team_send"])
+                       ["ork_configure_member", "ork_disband_member", "ork_project_info", "ork_spawn_member",
+                        "team_board", "team_members", "team_send"])
         // Unknown methods error instead of hanging the client.
         let unknown = server.handle(["jsonrpc": "2.0", "id": 2, "method": "resources/list"])
         XCTAssertNotNil(unknown?["error"])
@@ -78,5 +79,64 @@ final class MCPServerTests: XCTestCase {
         ])
         let result = response?["result"] as? [String: Any]
         XCTAssertEqual(result?["isError"] as? Bool, true)
+    }
+
+    // MARK: - Manager orchestration
+
+    private func promoteToManager() throws {
+        let bridge: [String: Any] = ["teamDir": teamDir.path, "member": "manager", "manager": true,
+                                     "workspace": "acme", "directory": "/tmp/acme"]
+        try JSONSerialization.data(withJSONObject: bridge)
+            .write(to: root.appendingPathComponent("abc.json"))
+    }
+
+    func testOrchestrationToolsAreManagerOnly() {
+        let reply = call("ork_spawn_member", ["name": "ana", "role": "QA"])
+        XCTAssertTrue(reply.isError)
+        XCTAssertTrue(reply.text.contains("manager only"))
+    }
+
+    func testProjectInfoBundlesWorkspaceRosterAndBoard() throws {
+        try promoteToManager()
+        try "- ana: /tmp/wt".write(to: teamDir.appendingPathComponent("members.md"), atomically: true, encoding: .utf8)
+        let reply = call("ork_project_info")
+        XCTAssertFalse(reply.isError)
+        XCTAssertTrue(reply.text.contains("Workspace: acme"))
+        XCTAssertTrue(reply.text.contains("Directory: /tmp/acme"))
+        XCTAssertTrue(reply.text.contains("- ana: /tmp/wt"))
+    }
+
+    func testMutationTimesOutAsNotApproved() throws {
+        try promoteToManager()
+        server = MCPServer(sessionID: "abc", bridgeDir: root, version: "test", approvalTimeout: 0.6)
+        let reply = call("ork_disband_member", ["name": "ana"])
+        XCTAssertFalse(reply.isError)
+        XCTAssertTrue(reply.text.contains("not approved"))
+        // The stale request is cleaned up so Ork never sees it later.
+        let requests = try FileManager.default.contentsOfDirectory(atPath: root.appendingPathComponent("requests").path)
+        XCTAssertTrue(requests.isEmpty)
+    }
+
+    func testApprovedMutationReturnsTheOutcome() throws {
+        try promoteToManager()
+        server = MCPServer(sessionID: "abc", bridgeDir: root, version: "test", approvalTimeout: 5)
+        let requests = root.appendingPathComponent("requests", isDirectory: true)
+        // Play Ork: watch for the request file and write the approval.
+        DispatchQueue.global().async {
+            let deadline = Date().addingTimeInterval(4)
+            while Date() < deadline {
+                if let files = try? FileManager.default.contentsOfDirectory(atPath: requests.path),
+                   let name = files.first(where: { $0.hasSuffix(".json") && !$0.hasSuffix(".response.json") }) {
+                    let id = name.replacingOccurrences(of: ".json", with: "")
+                    let response = try? JSONSerialization.data(withJSONObject: ["approved": true, "result": "spawned 'ana'"])
+                    try? response?.write(to: requests.appendingPathComponent("\(id).response.json"))
+                    return
+                }
+                Thread.sleep(forTimeInterval: 0.05)
+            }
+        }
+        let reply = call("ork_spawn_member", ["name": "ana", "role": "QA engineer"])
+        XCTAssertFalse(reply.isError)
+        XCTAssertEqual(reply.text, "spawned 'ana'")
     }
 }

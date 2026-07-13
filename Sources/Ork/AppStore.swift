@@ -39,6 +39,10 @@ final class AppStore: ObservableObject {
     /// Sessions enrolled in their workspace's agent team; see TeamService.
     @Published private(set) var teamSessionIDs: Set<UUID> = []
 
+    /// Sessions holding the manager role: their MCP bridge unlocks the
+    /// approval-gated orchestration tools (see OrchestrationService).
+    @Published private(set) var managerSessionIDs: Set<UUID> = []
+
     /// Below this share of one core, a CLI is repainting its TUI, not working.
     private static let idleCPUFraction = 0.06
     private static let freezePollInterval: TimeInterval = 30
@@ -55,13 +59,15 @@ final class AppStore: ObservableObject {
         var connections: [DBConnection]
         var sessions: [TerminalSession]
         var teamSessionIDs: [UUID]
+        var managerSessionIDs: [UUID]
 
-        init(workspaces: [Workspace], organizations: [Organization], connections: [DBConnection], sessions: [TerminalSession], teamSessionIDs: [UUID]) {
+        init(workspaces: [Workspace], organizations: [Organization], connections: [DBConnection], sessions: [TerminalSession], teamSessionIDs: [UUID], managerSessionIDs: [UUID]) {
             self.workspaces = workspaces
             self.organizations = organizations
             self.connections = connections
             self.sessions = sessions
             self.teamSessionIDs = teamSessionIDs
+            self.managerSessionIDs = managerSessionIDs
         }
 
         init(from decoder: Decoder) throws {
@@ -71,6 +77,7 @@ final class AppStore: ObservableObject {
             connections = (try? container.decode([DBConnection].self, forKey: .connections)) ?? []
             sessions = (try? container.decode([TerminalSession].self, forKey: .sessions)) ?? []
             teamSessionIDs = (try? container.decode([UUID].self, forKey: .teamSessionIDs)) ?? []
+            managerSessionIDs = (try? container.decode([UUID].self, forKey: .managerSessionIDs)) ?? []
         }
     }
 
@@ -101,6 +108,7 @@ final class AppStore: ObservableObject {
                 return alive
             }
             teamSessionIDs = Set(persisted.teamSessionIDs).intersection(Set(sessions.map(\.id)))
+            managerSessionIDs = Set(persisted.managerSessionIDs).intersection(Set(sessions.map(\.id)))
             // These sessions had a live CLI before the last quit; relaunch
             // them with the agent's resume command so the conversation returns.
             restoredSessionIDs = Set(sessions.map(\.id))
@@ -130,6 +138,7 @@ final class AppStore: ObservableObject {
             self?.pollStats()
         }
         pollStats()
+        OrchestrationService.shared.start(store: self)
     }
 
     private func save() {
@@ -139,7 +148,8 @@ final class AppStore: ObservableObject {
             organizations: organizations,
             connections: connections,
             sessions: live,
-            teamSessionIDs: live.map(\.id).filter { teamSessionIDs.contains($0) }
+            teamSessionIDs: live.map(\.id).filter { teamSessionIDs.contains($0) },
+            managerSessionIDs: live.map(\.id).filter { managerSessionIDs.contains($0) }
         )
         try? JSONEncoder().encode(persisted).write(to: stateURL, options: .atomic)
     }
@@ -310,6 +320,23 @@ final class AppStore: ObservableObject {
         return session
     }
 
+    /// Spawns the workspace's team manager: a claude session that designs and
+    /// staffs the team through approval-gated MCP tools and never implements.
+    /// It talks and reads, so it lives in the project root, no worktree. The
+    /// team join waits a beat for the terminal to exist; joining a session
+    /// whose PTY is not up yet would drop the briefing on the floor.
+    func spawnManager(in workspace: Workspace) {
+        guard let profile = AgentProfile.all.first(where: { $0.slug == "claude" }),
+              let session = try? newSession(agent: profile, in: workspace, useWorktree: false) else { return }
+        managerSessionIDs.insert(session.id)
+        renameSession(session.id, to: "manager")
+        configureAgent(session.id, persona: TeamService.managerRole, model: "", effort: "")
+        save()
+        DispatchQueue.main.asyncAfter(deadline: .now() + 4) { [weak self] in
+            self?.joinTeam(session.id)
+        }
+    }
+
     func closeSession(_ id: UUID) {
         // Closing a terminal is also leaving its team: teammates get the
         // leave note and members.md drops the ghost, exactly as if the
@@ -319,6 +346,7 @@ final class AppStore: ObservableObject {
         TerminalRegistry.shared.close(id)
         MCPBridge.removeAll(id)
         sessions.removeAll { $0.id == id }
+        managerSessionIDs.remove(id)
         frozenSessionIDs.remove(id)
         freezeStamps[id] = nil
         cpuSamples[id] = nil
@@ -608,13 +636,23 @@ final class AppStore: ObservableObject {
             text: "you are now named '\(newName)'. Sign outbox files as \(newName)__RECIPIENT__$RANDOM.md; teammates messaging '\(oldName)' get bounced with the roster."
         )
         TeamService.shared.writeMembersFile(workspaceID)
-        MCPBridge.writeBridge(session: sessions[index])
+        writeBridge(for: sessions[index])
     }
 
     // MARK: - Team (terminal-to-terminal messaging via TeamService)
 
     func teamMembers(in workspaceID: UUID) -> [TerminalSession] {
         sessions.filter { !$0.exited && $0.workspaceID == workspaceID && teamSessionIDs.contains($0.id) }
+    }
+
+    /// One place decides what goes in a session's MCP bridge file, so every
+    /// rewrite (join, rename, rebrief) keeps the manager flag intact.
+    private func writeBridge(for session: TerminalSession) {
+        MCPBridge.writeBridge(
+            session: session,
+            workspace: workspace(id: session.workspaceID),
+            manager: managerSessionIDs.contains(session.id)
+        )
     }
 
     func joinTeam(_ id: UUID) {
@@ -625,7 +663,7 @@ final class AppStore: ObservableObject {
         teamSessionIDs.insert(id)
         TeamService.shared.ensureTeam(workspaceID: ws.id, workspaceName: ws.name)
         TeamService.shared.writeMembersFile(ws.id)
-        MCPBridge.writeBridge(session: session)
+        writeBridge(for: session)
         let briefing = TeamService.shared.briefing(
             for: session, workspace: ws, teammates: existing.map(TeamService.memberName)
         )
@@ -648,7 +686,7 @@ final class AppStore: ObservableObject {
         guard let ws = workspace(id: workspaceID), !members.isEmpty else { return }
         TeamService.shared.ensureTeam(workspaceID: ws.id, workspaceName: ws.name)
         TeamService.shared.writeMembersFile(ws.id)
-        for member in members { MCPBridge.writeBridge(session: member) }
+        for member in members { writeBridge(for: member) }
         for (index, member) in members.enumerated() where !member.hibernated {
             // Coordinator first in the teammate list, so member briefings
             // name the right coordinator.

@@ -78,6 +78,11 @@ struct TeamPane: View {
                 .foregroundStyle(OrkTheme.stone)
                 .multilineTextAlignment(.center)
                 .frame(maxWidth: 380)
+            Button("Spawn manager") {
+                store.spawnManager(in: workspace)
+            }
+            .controlSize(.small)
+            .help("A claude session that reads the project, designs the team and staffs it through approval-gated tools")
         }
         .frame(maxWidth: .infinity, maxHeight: .infinity)
     }
@@ -127,6 +132,13 @@ struct TeamPane: View {
                     .orkCard(radius: 7)
                 }
                 Spacer()
+                if !members.contains(where: { store.managerSessionIDs.contains($0.id) }) {
+                    Button("Spawn manager") {
+                        store.spawnManager(in: workspace)
+                    }
+                    .controlSize(.small)
+                    .help("A claude session that designs and staffs this team through approval-gated tools; tell it what the project needs")
+                }
                 Button("Rebrief") {
                     store.rebriefTeam(workspace.id)
                 }
