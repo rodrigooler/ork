@@ -2,11 +2,17 @@
 
 Priorities for ork, in order. Items move up or down based on real usage; open an issue if something here matters to you.
 
-## Next (0.13)
+## Next (0.14)
 
 - **Tool timeline on session cards**: the notch shows it since 0.10.0; cards next.
 - **MCP bridge beyond claude**: other CLIs as they grow per-invocation MCP config flags.
 - **Prompt watch beyond claude**: recognize codex and gemini choice prompts in the notch.
+
+## Shipped in 0.13.0
+
+- Canvas 2.0 (Blueprints mode): minimalist activity cards replace the mini terminals — live tool call, current board task, output tokens, branch and model per member, each with a deterministic color so eight claude sessions stop looking identical. Every routed team message travels the edge as a glowing packet, a 'done' reaching the lead lands as a golden flash, and open PRs with CI status hang above the coordinator through the gh CLI. Pinch zooms; clicking a card opens Focus Mode. Terminals stay in the grid and stack layouts.
+- Team chat: the message log renders as a Discord-style chat (avatars, per-member colors, recipient chips, bounce/spill footnotes, system events), and member chips show agent, model, effort and standing role.
+- Data hygiene: log.md rotates itself into history/ past 150KB, the coordinator protocol mandates archiving between rounds, and an Archive board button in the team pane closes a demand manually ('## Decisions' survives, everything lands in history/ first).
 
 ## Shipped in 0.12.0
 
