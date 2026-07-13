@@ -90,10 +90,22 @@ final class TeamServiceTests: XCTestCase {
         let workspace = Workspace(id: UUID(), name: "acme", path: "/tmp/acme", organizationID: nil)
         let session = member("claude", workspace.id)
         let briefing = TeamService.shared.briefing(for: session, workspace: workspace, teammates: [])
-        XCTAssertTrue(briefing.contains("Max \(TeamService.messageCharCap) chars"))
+        XCTAssertTrue(briefing.contains("under \(TeamService.messageCharCap) chars"))
+        XCTAssertTrue(briefing.contains("never cut"))
+        XCTAssertTrue(briefing.contains("straight to the teammate"))
         XCTAssertTrue(briefing.contains("done <id>"))
         XCTAssertTrue(briefing.contains("unverified"))
         XCTAssertTrue(briefing.contains("## Archive"))
+    }
+
+    func testSpillLongMessageKeepsTheWholeText() {
+        let workspaceID = UUID()
+        defer { try? FileManager.default.removeItem(at: TeamService.teamDir(workspaceID)) }
+        let content = String(repeating: "y", count: TeamService.messageCharCap + 500)
+        let url = TeamService.spillLongMessage(workspaceID, sender: "claude-1a2b", content: content)
+        XCTAssertEqual(try? String(contentsOf: url, encoding: .utf8), content)
+        XCTAssertTrue(url.lastPathComponent.hasPrefix("msg-claude-1a2b-"))
+        XCTAssertTrue(url.path.contains("/artifacts/"))
     }
 
     func testBriefingCarriesThePersona() {

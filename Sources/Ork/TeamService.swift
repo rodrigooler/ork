@@ -88,7 +88,8 @@ final class TeamService {
         If your tools include the 'ork' MCP server (team_send, team_board, team_members), prefer those over the echo recipe. \
         Incoming messages appear in your input as [team msg from NAME]. Protocol, follow strictly: \
         (1) Message shapes: 'task <id>: one-line goal, spec stays in the Backlog' | 'claim <id>' | 'done <id>: one-line verified outcome' | 'rework <id>: concrete problems' | 'approved <id>: what was verified' | 'blocked <id>: reason'. \
-        (2) Max \(Self.messageCharCap) chars per message; code, diffs and logs go in commits or on the board, messages carry pointers (file:line, board section). Payloads too big for the board (full logs, long diffs) go to files under "\(dir)/artifacts/" and the message carries the path. Never send bare acknowledgements ('ok', 'received', 'starting'): silence means received, every message costs the recipient a full turn. \
+        (2) Keep messages under \(Self.messageCharCap) chars; code, diffs and logs go in commits or on the board, messages carry pointers (file:line, board section). A longer message is never cut: ork saves it whole under "\(dir)/artifacts/" and delivers the file path instead, which costs the recipient an extra read, so inline brevity wins. Payloads too big for the board (full logs, long diffs) go to artifacts/ the same way. Never send bare acknowledgements ('ok', 'received', 'starting'): silence means received, every message costs the recipient a full turn. \
+        (2b) Technical questions go straight to the teammate who owns that code, not through the coordinator; copy the coordinator only when the answer changes scope, schedule or the board. \
         (3) The board is the single source of truth: '## Backlog' holds unclaimed tasks and only the coordinator writes it; '## Tasks' holds claimed work as '- [ ] id: task — owner'; in '## Status' keep ONE line per member and overwrite your own; approved rounds move to '## Archive'; never restate board content in messages. \
         (4) Report only what you verified by running or reading; mark guesses 'unverified'; never invent or assume teammate results. \
         (5) 'ork' as MEMBER addresses the app itself, not a teammate: send it 'sleep' to park your terminal, 'escalate <id>: reason' to alert the human user, or (coordinator only) 'archive <one-line demand summary>' to snapshot the finished board into history/ and reset it ('## Decisions' survives). \
@@ -262,6 +263,16 @@ final class TeamService {
         sender != "user" && content.count > messageCharCap
     }
 
+    /// Writes an over-cap message whole to the team's artifacts dir and
+    /// returns the file, so delivery can carry a pointer instead of a cut.
+    static func spillLongMessage(_ workspaceID: UUID, sender: String, content: String) -> URL {
+        let dir = teamDir(workspaceID).appendingPathComponent("artifacts", isDirectory: true)
+        try? FileManager.default.createDirectory(at: dir, withIntermediateDirectories: true)
+        let url = dir.appendingPathComponent("msg-\(sender)-\(Int(Date().timeIntervalSince1970 * 1000)).md")
+        try? content.write(to: url, atomically: true, encoding: .utf8)
+        return url
+    }
+
     /// The agent canvas highlights routed messages; nil sender means the
     /// user or the app spoke.
     var onRoute: ((UUID?, UUID) -> Void)?
@@ -296,7 +307,7 @@ final class TeamService {
         var routedSummaries: [String] = []
         for url in entries.sorted(by: { $0.lastPathComponent < $1.lastPathComponent }) {
             guard let parsed = Self.parseMessageFilename(url.lastPathComponent) else { continue }
-            let content = (try? String(contentsOf: url, encoding: .utf8))?
+            var content = (try? String(contentsOf: url, encoding: .utf8))?
                 .trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
             // Empty reads usually mean the writer has not flushed yet; the
             // next directory event retries this file.
@@ -309,10 +320,11 @@ final class TeamService {
             }
             appendLog(workspaceID, "- [\(Self.timestamp())] \(parsed.sender) → \(parsed.recipient): \(content)")
             if Self.overCap(content, from: parsed.sender) {
-                appendLog(workspaceID, "  (bounced: \(content.count) chars over the \(Self.messageCharCap) cap)")
-                notify(memberNamed: parsed.sender, in: members,
-                       text: "message to \(parsed.recipient) NOT delivered: \(content.count) chars, cap is \(Self.messageCharCap). Put details on the board or in commits and resend a pointer (file:line, board section).")
-                continue
+                // Spill, never cut: the whole text lands in artifacts/ and the
+                // recipient gets the path, so nothing is lost to summarizing.
+                let spilled = Self.spillLongMessage(workspaceID, sender: parsed.sender, content: content)
+                appendLog(workspaceID, "  (spilled: \(content.count) chars → \(spilled.lastPathComponent))")
+                content = "long message (\(content.count) chars) saved whole to \(spilled.path). Read it before acting."
             }
             if parsed.recipient == Self.controlRecipient {
                 handleControl(workspaceID, sender: parsed.sender, content: content, members: members)
