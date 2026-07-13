@@ -2,11 +2,17 @@
 
 Priorities for ork, in order. Items move up or down based on real usage; open an issue if something here matters to you.
 
-## Next (0.12)
+## Next (0.13)
 
 - **Tool timeline on session cards**: the notch shows it since 0.10.0; cards next.
 - **MCP bridge beyond claude**: other CLIs as they grow per-invocation MCP config flags.
 - **Prompt watch beyond claude**: recognize codex and gemini choice prompts in the notch.
+
+## Shipped in 0.12.0
+
+- Team manager: a claude session spawned from the team pane that reads the project, designs the smallest team for the demand (roles and skills per member) and staffs it through orchestration MCP tools; every spawn, reconfigure or disband waits for the root user's approval in Ork, and a denial is a decision, not an error.
+- Autopilot: a per-team toggle that asks the coordinator for improvement proposals on a configurable cycle. Proposals surface in the team pane for approve or reject; approved ones become board tasks through the normal review and PR gates, cycles pause above a configurable 5h token ceiling, and learnings.md carries what cycles discover across demands.
+- Message auto-spill: over-cap team messages are no longer bounced; the full text lands in the team's artifacts/ dir and the recipient gets the path, so nothing is ever lost to re-summarizing. The protocol also sends technical questions straight to the owning teammate instead of through the coordinator.
 
 ## Shipped in 0.11.0
 
